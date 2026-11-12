@@ -31,3 +31,13 @@ El repositorio no contiene actualmente archivos de proyecto. `Quiz1.md` figura e
 - Separar datos observados de estimaciones para velocidad, consumo y congestión; rotular cada métrica según su procedencia.
 - El modo bicicleta seguirá caminos peatonales conectados de OSM, no movimiento geométrico sin restricciones fuera de la red. Este supuesto evita rutas atravesando edificios, ríos u otras barreras.
 - Al no incluir respaldo local, la demostración depende de conectividad y disponibilidad de los servicios externos; si se prioriza robustez, una caché local sería el cambio recomendado.
+
+## Estado de implementación (12-nov-2026)
+
+Implementado según este plan, con estas desviaciones documentadas en README e INFORME:
+
+- **Descarga OSM:** Overpass (el backend por defecto de OSMnx) respondía 502 por saturación. La red se descarga de la API 0.6 de OSM en recuadros, se filtra con los criterios `drive`/`walk` de OSMnx y se construye con `osmnx.graph_from_xml`.
+- **Respaldo local:** se agregó la caché recomendada en "Consideraciones" y, por el requisito de plan B del enunciado, una instantánea versionada en `data/` que se usa solo si la descarga falla.
+- **Metro:** se muestran las estaciones de OSM y la herramienta `nearest_metro_station`. No se enruta en Metro.
+- **Herramientas del agente:** `plan_route`, `compare_modes`, `search_docs`, `check_pico_y_placa` y `nearest_metro_station`.
+- **Pendiente:** ejecutar `eval/run_agent_eval.py` con una clave LLM y llevar los resultados al INFORME.

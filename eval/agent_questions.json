@@ -1,0 +1,123 @@
+{
+  "fecha_referencia": "2026-11-12",
+  "hora_dashboard": 8,
+  "criterios": {
+    "herramienta_correcta": "Todas las herramientas de 'herramientas_esperadas' fueron llamadas al menos una vez (cada elemento puede ser una lista de alternativas válidas).",
+    "cita": "La respuesta final contiene al menos uno de los textos de 'cita_esperada' (nombre del documento del corpus, o la mención de OpenStreetMap/A* para cifras calculadas).",
+    "contenido": "La respuesta contiene todos los textos de 'debe_contener' (sin distinguir mayúsculas ni tildes)."
+  },
+  "preguntas": [
+    {
+      "id": "Q01",
+      "categoria": "ruta",
+      "pregunta": "¿Cuánto me demoro en carro desde la Universidad EAFIT hasta la Universidad de Antioquia saliendo a las 8 a. m.?",
+      "herramientas_esperadas": [["plan_route", "compare_modes"]],
+      "cita_esperada": ["OpenStreetMap", "A*", "metodologia_rutas.md"],
+      "debe_contener": ["min"]
+    },
+    {
+      "id": "Q02",
+      "categoria": "comparación",
+      "pregunta": "Compara carro, bus y bicicleta para ir de Parque Berrío a Parque Lleras a las 6 de la tarde. ¿Cuál emite menos CO2?",
+      "herramientas_esperadas": [["compare_modes"]],
+      "cita_esperada": ["OpenStreetMap", "A*", "metodologia_rutas.md"],
+      "debe_contener": ["bicicleta"]
+    },
+    {
+      "id": "Q03",
+      "categoria": "normativa",
+      "pregunta": "¿Qué placas tienen pico y placa los miércoles en Medellín y en qué horario?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["pico_y_placa_2026_2.md"],
+      "debe_contener": ["0", "2", "5"]
+    },
+    {
+      "id": "Q04",
+      "categoria": "herramienta determinística",
+      "pregunta": "Mi carro tiene placa HTK236. ¿Puedo circular mañana a las 7 a. m.?",
+      "herramientas_esperadas": [["check_pico_y_placa"]],
+      "cita_esperada": ["pico_y_placa_2026_2.md"],
+      "debe_contener": ["viernes"]
+    },
+    {
+      "id": "Q05",
+      "categoria": "tarifas",
+      "pregunta": "¿Cuánto cuesta un viaje en Metro con tarjeta Cívica frecuente y cuánto el bus urbano en 2026?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["tarifas_transporte_2026.md"],
+      "debe_contener": ["3.820", "3.000"]
+    },
+    {
+      "id": "Q06",
+      "categoria": "Metro",
+      "pregunta": "¿Cuál es la estación de Metro más cercana a Plaza Mayor y a qué hora abre el Metro los domingos?",
+      "herramientas_esperadas": [["nearest_metro_station"], ["search_docs"]],
+      "cita_esperada": ["sistema_metro.md"],
+      "debe_contener": ["5:00"]
+    },
+    {
+      "id": "Q07",
+      "categoria": "encadenamiento",
+      "pregunta": "Tengo un carro de placa terminada en 6 y quiero ir de Ciudad del Río al Estadio el próximo jueves 19 de noviembre de 2026 a las 5 p. m. ¿Puedo ir en carro? Si no, ¿qué alternativa es más rápida?",
+      "herramientas_esperadas": [["check_pico_y_placa"], ["compare_modes", "plan_route"]],
+      "cita_esperada": ["pico_y_placa_2026_2.md"],
+      "debe_contener": ["bus"]
+    },
+    {
+      "id": "Q08",
+      "categoria": "supuestos",
+      "pregunta": "¿Cómo calcula el copiloto el tráfico en hora pico? ¿Usa datos en tiempo real?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["metodologia_rutas.md"],
+      "debe_contener": ["0,55"]
+    },
+    {
+      "id": "Q09",
+      "categoria": "supuestos",
+      "pregunta": "¿Qué precio de gasolina y qué factor de emisión usa la herramienta para el carro, y de dónde salen?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["combustible_y_emisiones.md"],
+      "debe_contener": ["16.251", "2,31"]
+    },
+    {
+      "id": "Q10",
+      "categoria": "optimización",
+      "pregunta": "Dame la ruta en carro que menos CO2 emite desde Unicentro Medellín hasta Parque del Poblado a las 2 p. m. y dime por qué vías va.",
+      "herramientas_esperadas": [["plan_route"]],
+      "cita_esperada": ["OpenStreetMap", "A*", "metodologia_rutas.md"],
+      "debe_contener": ["kg"]
+    },
+    {
+      "id": "Q11",
+      "categoria": "exención",
+      "pregunta": "Tengo un carro híbrido con placa terminada en 5. ¿Me aplica el pico y placa el lunes 16 de noviembre de 2026?",
+      "herramientas_esperadas": [["check_pico_y_placa", "search_docs"]],
+      "cita_esperada": ["pico_y_placa_2026_2.md"],
+      "debe_contener": ["exent"]
+    },
+    {
+      "id": "Q12",
+      "categoria": "bicicleta pública",
+      "pregunta": "¿Cómo funciona EnCicla y cuánto cuesta usarla? ¿La ruta en bicicleta del copiloto usa ciclorrutas?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["encicla.md", "metodologia_rutas.md"],
+      "debe_contener": ["gratuit"]
+    },
+    {
+      "id": "Q13",
+      "categoria": "manejo de errores",
+      "pregunta": "¿Cuánto me demoro en bus desde Rionegro hasta Plaza Mayor?",
+      "herramientas_esperadas": [["plan_route", "compare_modes"]],
+      "cita_esperada": ["área", "fuera", "no"],
+      "debe_contener": []
+    },
+    {
+      "id": "Q14",
+      "categoria": "fuera de corpus",
+      "pregunta": "¿Cuál es la multa exacta por no respetar el pico y placa?",
+      "herramientas_esperadas": [["search_docs"]],
+      "cita_esperada": ["pico_y_placa_2026_2.md"],
+      "debe_contener": ["Secretaría de Movilidad"]
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+[
+ {
+  "name": "Alpujarra",
+  "line": "Metro",
+  "lat": 6.2429407,
+  "lon": -75.57140285
+ },
+ {
+  "name": "Barrio Colombia",
+  "line": "Metroplús",
+  "lat": 6.228677833333333,
+  "lon": -75.57022446666667
+ },
+ {
+  "name": "Cisneros",
+  "line": "Metro",
+  "lat": 6.24904775,
+  "lon": -75.5751592
+ },
+ {
+  "name": "Estadio",
+  "line": "Metro",
+  "lat": 6.25332705,
+  "lon": -75.5882344
+ },
+ {
+  "name": "Exposiciones",
+  "line": "Metro",
+  "lat": 6.23850905,
+  "lon": -75.5731295
+ },
+ {
+  "name": "Floresta",
+  "line": "Metro",
+  "lat": 6.2587037,
+  "lon": -75.5977532
+ },
+ {
+  "name": "Hospital",
+  "line": "Metro",
+  "lat": 6.26393195,
+  "lon": -75.56334615
+ },
+ {
+  "name": "Hospital",
+  "line": "Metroplús",
+  "lat": 6.2629382499999995,
+  "lon": -75.5636796
+ },
+ {
+  "name": "Industriales",
+  "line": "Metro",
+  "lat": 6.23002265,
+  "lon": -75.57563329999999
+ },
+ {
+  "name": "Palos Verdes",
+  "line": "Metroplús",
+  "lat": 6.2632506,
+  "lon": -75.5564143
+ },
+ {
+  "name": "Parque Berrío",
+  "line": "Metro",
+  "lat": 6.2505443,
+  "lon": -75.56820965
+ },
+ {
+  "name": "Poblado",
+  "line": "Metro",
+  "lat": 6.2119599,
+  "lon": -75.5781506
+ },
+ {
+  "name": "Prado",
+  "line": "Metro",
+  "lat": 6.25686745,
+  "lon": -75.5661528
+ },
+ {
+  "name": "Prado",
+  "line": "Metroplús",
+  "lat": 6.257501850000001,
+  "lon": -75.56611665
+ },
+ {
+  "name": "San Antonio",
+  "line": "Metro",
+  "lat": 6.247079725,
+  "lon": -75.56963892499999
+ },
+ {
+  "name": "Suramericana",
+  "line": "Metro",
+  "lat": 6.25298325,
+  "lon": -75.58300085
+ },
+ {
+  "name": "Universidad",
+  "line": "Metro",
+  "lat": 6.2694097499999994,
+  "lon": -75.56580375
+ }
+]
