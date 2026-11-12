@@ -38,6 +38,14 @@ La primera ejecución descarga la red de OpenStreetMap (unos 12 recuadros de la 
 
 **Plan B de datos.** Si no hay conexión o la API de OSM falla, la app usa la instantánea versionada en [data/](data/) (`drive.graphml.gz`, `walk.graphml.gz`, `metro_stations.json`, descargadas el 12-nov-2026) y lo indica en la barra lateral. Si el modelo de embeddings no se puede descargar, el RAG usa TF-IDF automáticamente.
 
+### Despliegue en Streamlit Community Cloud
+
+1. Entrar a https://share.streamlit.io con la cuenta de GitHub dueña del repositorio y elegir **Create app → Deploy a public app from GitHub**.
+2. Repositorio `HardlinePizza21/Introduccion_IA`, rama `main`, archivo principal `app.py`.
+3. En **Advanced settings**, elegir Python 3.13 o una versión más reciente y pegar los *secrets* de [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example) con su clave.
+
+Los *secrets* `OSM_SOURCE="snapshot"` y `RAG_BACKEND="tfidf"` mantienen la app por debajo de 1 GB de RAM, el límite del plan gratuito (alrededor de 620 MB frente a 1,2 GB con el modelo de embeddings neuronal), y evitan descargar de OSM en cada arranque en frío. En local se usan la descarga en vivo y los embeddings neuronales.
+
 ## 4. Reproducir la evaluación
 
 ```bash

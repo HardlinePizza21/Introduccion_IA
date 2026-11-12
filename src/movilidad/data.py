@@ -16,6 +16,7 @@ Sin descarga ni instantánea se lanza `DataAccessError` con un mensaje claro.
 from __future__ import annotations
 
 import json
+import os
 import math
 import time
 import xml.etree.ElementTree as ET
@@ -199,13 +200,20 @@ def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
         raise ValueError("network_type debe ser 'drive' o 'walk'")
     import osmnx as ox
 
+    import os
+
     CACHE.mkdir(parents=True, exist_ok=True)
     snapshot = CACHE / f"{network_type}.graphml"
+    # OSM_SOURCE=snapshot: usar directamente la instantánea de data/ (despliegue en la nube,
+    # evita descargar de la API de OSM en cada arranque en frío).
+    force_snapshot = os.getenv("OSM_SOURCE", "live").lower() == "snapshot"
     if snapshot.exists() and not refresh:
         G = ox.load_graphml(snapshot)
         DATA_STATUS[network_type] = "caché local de una descarga OSM previa"
     else:
         try:
+            if force_snapshot:
+                raise DataAccessError("OSM_SOURCE=snapshot")
             xml = build_osm_xml(network_type, download_tiles())
             G = ox.graph_from_xml(xml, bidirectional=(network_type == "walk"), simplify=True, retain_all=False)
             G = ox.truncate.truncate_graph_bbox(G, BBOX)
@@ -220,7 +228,8 @@ def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
 
             with gzip.open(backup, "rb") as src, open(snapshot, "wb") as dst:
                 shutil.copyfileobj(src, dst)
-            DATA_STATUS[network_type] = "PLAN B: instantánea OSM versionada (data/, 12-nov-2026)"
+            DATA_STATUS[network_type] = ("instantánea OSM versionada (data/, 12-nov-2026)" if force_snapshot
+                                         else "PLAN B: instantánea OSM versionada (data/, 12-nov-2026)")
             return from_networkx(ox.load_graphml(snapshot), network_type)
         ox.save_graphml(G, snapshot)
     return from_networkx(G, network_type)
@@ -240,6 +249,8 @@ def load_metro_stations() -> list[dict]:
     left, bottom, right, top = BBOX
     groups: dict = {}
     try:
+        if os.getenv("OSM_SOURCE", "live").lower() == "snapshot":
+            raise DataAccessError("OSM_SOURCE=snapshot")
         tiles = download_tiles()
     except DataAccessError:
         return json.loads((DATA_DIR / "metro_stations.json").read_text(encoding="utf-8"))
