@@ -15,4 +15,4 @@ Resumen elaborado por el equipo; consultado el 12 de noviembre de 2026. La fuent
 - Los trayectos intermunicipales dentro del área metropolitana subieron entre 300 y 550 pesos; por ejemplo, la cuenca 4 (Medellín/Itagüí/La Estrella) quedó en 4.715 pesos.
 
 ## Uso en este proyecto
-El copiloto usa 3.000 pesos como costo fijo de un viaje en bus urbano. El viaje en Metro no se planifica con A*; para Metro se reporta la tarifa frecuente como referencia.
+La tarifa de bus se conserva como referencia documental, pero el copiloto no calcula rutas ni costos de viaje en bus. El viaje en Metro no se planifica con A*; para Metro se reporta la tarifa frecuente como referencia.

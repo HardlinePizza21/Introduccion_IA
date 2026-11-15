@@ -26,7 +26,8 @@ from movilidad.planner import Planner  # noqa: E402
 from movilidad.rag import DocIndex  # noqa: E402
 
 st.set_page_config(page_title="Copiloto de Movilidad – Valle de Aburrá", page_icon="🚦", layout="wide")
-MODE_COLORS = {"carro": "#c0392b", "bus": "#2471a3", "bicicleta": "#1e8449"}
+MODE_COLORS = {"carro": "#c0392b", "bicicleta": "#1e8449"}
+MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie"}
 CUSTOM = "📍 Coordenadas personalizadas"
 
 
@@ -57,10 +58,10 @@ def hourly_profile(origin, destination, env_json: str, w_json: str):
     env, w = EnvParams(**json.loads(env_json)), Weights(**json.loads(w_json))
     rows = []
     for h in range(24):
-        for m in ("carro", "bus"):
+        for m in MODES:
             p = get_planner().plan(origin, destination, m, h, env, w)
             if p.found:
-                rows.append({"hora": h, "modo": m, "tiempo_min": round(p.time_min, 1)})
+                rows.append({"hora": h, "modo": MODE_LABELS[m], "tiempo_min": round(p.time_min, 1)})
     return pd.DataFrame(rows)
 
 
@@ -82,29 +83,31 @@ def place_input(label, default):
 origin = place_input("Origen", "Universidad EAFIT")
 destination = place_input("Destino", "Universidad de Antioquia")
 hour = st.sidebar.slider("Hora de salida (hora local)", 0, 23, 8,
-                         help="Cambia el factor de congestión supuesto para carro y bus.")
-modes = st.sidebar.multiselect("Modos a comparar", list(MODES), default=list(MODES))
+                         help="Cambia el factor de congestión supuesto para carro.")
+modes = st.sidebar.multiselect("Modos de ruta A*", list(MODES), default=list(MODES),
+                               format_func=lambda mode: MODE_LABELS[mode])
+st.sidebar.caption("Metro: consulta de estaciones; no se calcula una ruta en Metro.")
 
 d = EnvParams()
 with st.sidebar.expander("1 · Parámetros del entorno", expanded=False):
     st.caption("Definen el costo físico de cada tramo. Son **supuestos ajustables** salvo los marcados como fuente.")
     st.markdown("**Velocidad base del carro (km/h) a flujo libre**")
     speed_car = {c: st.number_input(f"Carro – {c}", 5.0, 100.0, v, 5.0, key=f"car_{c}") for c, v in d.speed_car.items()}
-    st.markdown("**Velocidad base del bus (km/h)**")
-    speed_bus = {c: st.number_input(f"Bus – {c}", 5.0, 80.0, v, 5.0, key=f"bus_{c}") for c, v in d.speed_bus.items()}
     speed_bike = st.number_input("Bicicleta (km/h, informativa)", 5.0, 35.0, d.speed_bike_kmh, 1.0)
     peak = st.slider("Factor de congestión en hora pico (6–8 h, 17–19 h)", 0.2, 1.0, d.peak_factor, 0.05,
-                     help="Multiplica la velocidad del carro y del bus. 1 = sin congestión.")
+                     help="Multiplica la velocidad del carro. 1 = sin congestión.")
     shoulder = st.slider("Factor en horas intermedias (9, 12, 13, 16, 20 h)", 0.2, 1.0, d.shoulder_factor, 0.05)
     cons = st.number_input("Consumo del carro (L/100 km)", 3.0, 25.0, d.car_consumption_l_100km, 0.5)
     price = st.number_input("Precio gasolina (COP/galón)", 0.0, 40000.0, d.gasoline_price_cop_gal, 100.0,
                             help="Fuente: CREG/MinEnergía, Medellín nov-2026.")
-    fare = st.number_input("Tarifa del bus (COP)", 0.0, 10000.0, d.bus_fare_cop, 50.0, help="Fuente: tarifa 2026.")
-    occ = st.number_input("Ocupación promedio del bus (pasajeros)", 1.0, 120.0, d.bus_occupancy, 1.0,
-                          help="Divide las emisiones del bus entre los pasajeros.")
-env = EnvParams(speed_car=speed_car, speed_bus=speed_bus, speed_bike_kmh=speed_bike, peak_factor=peak,
-                shoulder_factor=shoulder, car_consumption_l_100km=cons, gasoline_price_cop_gal=price,
-                bus_fare_cop=fare, bus_occupancy=occ)
+env = EnvParams(
+    speed_car=speed_car,
+    speed_bike_kmh=speed_bike,
+    peak_factor=peak,
+    shoulder_factor=shoulder,
+    car_consumption_l_100km=cons,
+    gasoline_price_cop_gal=price,
+)
 
 with st.sidebar.expander("2 · Preferencias (pesos del costo)", expanded=True):
     st.caption("Costo de un tramo = w_d·km + w_t·min + w_c·(miles COP) + w_e·(100 g CO₂). La bicicleta siempre minimiza distancia.")
@@ -147,14 +150,14 @@ with tab_routes:
         st.info("Seleccione al menos un modo en la barra lateral.")
     rows = []
     for m, p in plans.items():
-        rows.append({"Modo": m, "Distancia (km)": round(p.distance_km, 2), "Tiempo (min)": round(p.time_min, 1),
+        rows.append({"Modo": MODE_LABELS[m], "Distancia (km)": round(p.distance_km, 2), "Tiempo (min)": round(p.time_min, 1),
                      "Costo (COP)": round(p.cost_cop), "CO₂ (kg)": round(p.co2_kg, 3),
                      "Nodos expandidos": p.expanded, "Búsqueda (ms)": round(p.runtime_ms, 1),
                      "Nota": p.message if p.found else f"⚠️ {p.message}"})
     col_map, col_tab = st.columns([3, 2])
     with col_map:
         fmap = folium.Map(location=[(BBOX[1] + BBOX[3]) / 2, (BBOX[0] + BBOX[2]) / 2], zoom_start=13,
-                          tiles="cartodbpositron")
+                          tiles="OpenStreetMap")
         stations = folium.FeatureGroup("Estaciones Metro / Metroplús")
         for s in get_stations():
             folium.CircleMarker([s["lat"], s["lon"]], radius=5, color="#7d3c98", fill=True, fill_opacity=0.9,
@@ -163,14 +166,15 @@ with tab_routes:
         for m, p in plans.items():
             if p.found:
                 folium.PolyLine(p.geometry, color=MODE_COLORS[m], weight=6 if m == "carro" else 4, opacity=0.8,
-                                tooltip=f"{m}: {p.distance_km:.2f} km · {p.time_min:.1f} min").add_to(fmap)
+                                tooltip=f"{MODE_LABELS[m]}: {p.distance_km:.2f} km · {p.time_min:.1f} min").add_to(fmap)
         any_plan = next(iter(plans.values()), None)
         if any_plan:
             folium.Marker(any_plan.origin, tooltip="Origen", icon=folium.Icon(color="green", icon="play")).add_to(fmap)
             folium.Marker(any_plan.destination, tooltip="Destino", icon=folium.Icon(color="red", icon="flag")).add_to(fmap)
         folium.LayerControl().add_to(fmap)
         st_folium(fmap, height=520, use_container_width=True, returned_objects=[])
-        st.caption("Rojo: carro · Azul: bus · Verde: bicicleta · Morado: estaciones. Velocidades estimadas, no tráfico real.")
+        st.caption("Rojo: carro · Verde: bicicleta / a pie · Morado: estaciones de Metro. "
+                   "La opción bicicleta / a pie usa la red peatonal de OSM; velocidades estimadas, no tráfico real.")
     with col_tab:
         st.subheader("Comparación de modos")
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -179,7 +183,7 @@ with tab_routes:
             long = pd.DataFrame(found).melt(id_vars="Modo", value_vars=["Tiempo (min)", "Costo (COP)", "CO₂ (kg)"])
             chart = alt.Chart(long).mark_bar().encode(
                 x=alt.X("value:Q", title=None), y=alt.Y("Modo:N", title=None),
-                color=alt.Color("Modo:N", scale=alt.Scale(domain=list(MODE_COLORS), range=list(MODE_COLORS.values())),
+                color=alt.Color("Modo:N", scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
                                 legend=None),
                 tooltip=["Modo", "variable", "value"],
             ).properties(height=80).facet(row=alt.Row("variable:N", title=None)).resolve_scale(x="independent")
@@ -190,14 +194,14 @@ with tab_routes:
     for m in modes:
         for a in ("astar", "dijkstra", "bfs"):
             p = planner.plan(origin, destination, m, hour, env, weights, AlgoParams(a, hw if a == "astar" else 1.0))
-            comp.append({"Modo": m, "Algoritmo": a, "Nodos expandidos": p.expanded,
+            comp.append({"Modo": MODE_LABELS[m], "Algoritmo": a, "Nodos expandidos": p.expanded,
                          "Costo ponderado": round(p.weighted_cost, 4), "Tiempo (min)": round(p.time_min, 1)})
     st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
 
     st.subheader("Detalle por tramo")
     found_modes = [m for m, p in plans.items() if p.found]
     if found_modes:
-        sel = st.selectbox("Modo", found_modes)
+        sel = st.selectbox("Modo", found_modes, format_func=lambda mode: MODE_LABELS[mode])
         seg = pd.DataFrame(plans[sel].segments)
         st.dataframe(seg, hide_index=True, width="stretch", height=280)
 
@@ -211,8 +215,10 @@ with tab_hours:
         line = alt.Chart(prof).mark_line(point=True).encode(
             x=alt.X("hora:Q", title="Hora de salida", scale=alt.Scale(domain=[0, 23])),
             y=alt.Y("tiempo_min:Q", title="Tiempo (min)"),
-            color=alt.Color("modo:N", scale=alt.Scale(domain=["carro", "bus"],
-                                                       range=[MODE_COLORS["carro"], MODE_COLORS["bus"]])),
+            color=alt.Color(
+                "modo:N",
+                scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
+            ),
             tooltip=["hora", "modo", "tiempo_min"])
         rule = alt.Chart(pd.DataFrame({"hora": [hour]})).mark_rule(strokeDash=[4, 4]).encode(x="hora:Q")
         st.altair_chart(line + rule, width="stretch")

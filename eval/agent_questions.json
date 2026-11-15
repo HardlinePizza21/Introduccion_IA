@@ -18,7 +18,7 @@
     {
       "id": "Q02",
       "categoria": "comparación",
-      "pregunta": "Compara carro, bus y bicicleta para ir de Parque Berrío a Parque Lleras a las 6 de la tarde. ¿Cuál emite menos CO2?",
+      "pregunta": "Compara carro y bicicleta para ir de Parque Berrío a Parque Lleras a las 6 de la tarde. ¿Cuál emite menos CO2?",
       "herramientas_esperadas": [["compare_modes"]],
       "cita_esperada": ["OpenStreetMap", "A*", "metodologia_rutas.md"],
       "debe_contener": ["bicicleta"]
@@ -58,10 +58,10 @@
     {
       "id": "Q07",
       "categoria": "encadenamiento",
-      "pregunta": "Tengo un carro de placa terminada en 6 y quiero ir de Ciudad del Río al Estadio el próximo jueves 19 de noviembre de 2026 a las 5 p. m. ¿Puedo ir en carro? Si no, ¿qué alternativa es más rápida?",
+      "pregunta": "Tengo un carro de placa terminada en 6 y quiero ir de Ciudad del Río al Estadio el próximo jueves 19 de noviembre de 2026 a las 5 p. m. ¿Puedo ir en carro? Si no, ¿cuánto tarda la ruta en bicicleta/a pie?",
       "herramientas_esperadas": [["check_pico_y_placa"], ["compare_modes", "plan_route"]],
       "cita_esperada": ["pico_y_placa_2026_2.md"],
-      "debe_contener": ["bus"]
+      "debe_contener": ["bicicleta"]
     },
     {
       "id": "Q08",
@@ -105,11 +105,11 @@
     },
     {
       "id": "Q13",
-      "categoria": "manejo de errores",
+      "categoria": "modo no soportado",
       "pregunta": "¿Cuánto me demoro en bus desde Rionegro hasta Plaza Mayor?",
-      "herramientas_esperadas": [["plan_route", "compare_modes"]],
-      "cita_esperada": ["área", "fuera", "no"],
-      "debe_contener": []
+      "herramientas_esperadas": [],
+      "cita_esperada": ["no calcula rutas de bus", "no hay información centralizada"],
+      "debe_contener": ["bus"]
     },
     {
       "id": "Q14",

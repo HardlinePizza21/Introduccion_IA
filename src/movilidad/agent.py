@@ -49,7 +49,7 @@ OPTIMIZE_PRESETS = {
 TOOLS = [
     {"type": "function", "function": {
         "name": "plan_route",
-        "description": "Calcula con A* la mejor ruta en un modo (carro, bus o bicicleta) entre dos lugares del área "
+        "description": "Calcula con A* la mejor ruta en carro o bicicleta/a pie sobre la red peatonal entre dos lugares del área "
                        "Centro–Laureles–El Poblado de Medellín. Devuelve distancia, tiempo, costo, CO2 y vías principales.",
         "parameters": {"type": "object", "properties": {
             "origin": {"type": "string", "description": f"Lugar predefinido ({', '.join(PLACES)}) o 'lat, lon'"},
@@ -61,7 +61,7 @@ TOOLS = [
         }, "required": ["origin", "destination", "mode"]}}},
     {"type": "function", "function": {
         "name": "compare_modes",
-        "description": "Compara carro, bus y bicicleta entre dos lugares a una hora: distancia, tiempo, costo y CO2.",
+        "description": "Compara carro y bicicleta/a pie sobre la red peatonal entre dos lugares: distancia, tiempo, costo y CO2.",
         "parameters": {"type": "object", "properties": {
             "origin": {"type": "string"}, "destination": {"type": "string"},
             "hour": {"type": "integer", "description": "Hora local de salida 0-23"},
@@ -92,13 +92,15 @@ def system_prompt(today: dt.date, hour: int) -> str:
     return f"""Eres el Copiloto de Movilidad del Valle de Aburrá (proyecto académico SI3003, EAFIT).
 Hoy es {today.isoformat()} ({pico_placa.DAY_NAMES[today.weekday()]}); la hora de salida seleccionada en el dashboard es {hour}:00.
 Reglas:
-1. Para rutas, tiempos, costos o emisiones usa SIEMPRE plan_route o compare_modes; nunca inventes cifras.
-2. Para normas, tarifas, horarios del Metro, EnCicla o supuestos del modelo usa search_docs y cita cada dato con la cita
+1. Para rutas de carro o bicicleta/a pie, tiempos, costos o emisiones usa plan_route o compare_modes; nunca inventes cifras.
+2. No calcules ni inventes rutas de bus: el sistema no tiene información centralizada de sus recorridos. Puedes consultar
+   tarifas de bus en search_docs si preguntan por ellas. El Metro solo ofrece consulta de estaciones, no cálculo de rutas.
+3. Para normas, tarifas, horarios del Metro, EnCicla o supuestos del modelo usa search_docs y cita cada dato con la cita
    exacta que devuelve la herramienta, con el formato [archivo.md § sección].
-3. Para saber si un vehículo puede circular usa check_pico_y_placa (y cita pico_y_placa_2026_2.md).
-4. Cuando cites cifras de rutas, indica que provienen del cálculo A* sobre OpenStreetMap con velocidades estimadas (no tráfico real).
-5. Puedes encadenar varias herramientas. Si una herramienta devuelve un error, explícalo o corrige los argumentos.
-6. Si la información no está en el corpus ni en las herramientas, dilo. No des consejo legal ni de seguridad.
+4. Para saber si un vehículo puede circular usa check_pico_y_placa (y cita pico_y_placa_2026_2.md).
+5. Cuando cites cifras de rutas, indica que provienen del cálculo A* sobre OpenStreetMap con velocidades estimadas (no tráfico real).
+6. Puedes encadenar varias herramientas. Si una herramienta devuelve un error, explícalo o corrige los argumentos.
+7. Si la información no está en el corpus ni en las herramientas, dilo. No des consejo legal ni de seguridad.
 Responde en español, de forma breve y clara."""
 
 

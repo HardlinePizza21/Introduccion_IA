@@ -195,7 +195,7 @@ def from_networkx(G, network_type: str) -> RoadGraph:
 
 
 def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
-    """Red OSM del área: 'drive' (carro/bus, respeta sentidos) o 'walk' (bicicleta, bidireccional)."""
+    """Red OSM del área: 'drive' (carro, respeta sentidos) o 'walk' (bicicleta, bidireccional)."""
     if network_type not in ("drive", "walk"):
         raise ValueError("network_type debe ser 'drive' o 'walk'")
     import osmnx as ox

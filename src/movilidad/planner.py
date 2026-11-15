@@ -8,7 +8,7 @@ from .config import AlgoParams, EnvParams, MODES, Weights
 from .data import RoadGraph, load_graph, resolve_place
 from .search import astar, bfs, dijkstra, make_heuristic
 
-NETWORK_FOR_MODE = {"carro": "drive", "bus": "drive", "bicicleta": "walk"}
+NETWORK_FOR_MODE = {"carro": "drive", "bicicleta": "walk"}
 MAX_SNAP_M = 400  # si el punto queda más lejos de la red, se considera fuera del área
 
 
@@ -31,12 +31,6 @@ def edge_metrics(edge, mode: str, hour: int, env: EnvParams) -> EdgeMetrics:
         fuel_l = L / 1000 * env.car_consumption_l_100km / 100
         return EdgeMetrics(L, v, L / (v / 3.6), fuel_l * env.gasoline_price_cop_l, fuel_l * env.gasoline_kgco2_l,
                            f"supuesto: base {edge.road_class} {env.speed_car[edge.road_class]:.0f} km/h × congestión {f:.2f} ({hour}:00)")
-    if mode == "bus":
-        f = env.congestion(hour)
-        v = env.speed_bus[edge.road_class] * f
-        fuel_l = L / 1000 * env.bus_consumption_l_100km / 100
-        return EdgeMetrics(L, v, L / (v / 3.6), 0.0, fuel_l * env.diesel_kgco2_l / env.bus_occupancy,
-                           f"supuesto: base {edge.road_class} {env.speed_bus[edge.road_class]:.0f} km/h × congestión {f:.2f} ({hour}:00)")
     if mode == "bicicleta":
         v = env.speed_bike_kmh
         return EdgeMetrics(L, v, L / (v / 3.6), 0.0, 0.0, f"supuesto: velocidad constante {v:.0f} km/h (informativa)")
@@ -166,11 +160,7 @@ class Planner:
                 "via": e.name or "(sin nombre)", "clase": e.road_class, "longitud_m": round(m.length_m, 1),
                 "velocidad_kmh": round(m.speed_kmh, 1), "tiempo_s": round(m.time_s, 1), "procedencia": m.provenance,
             })
-        if mode == "bus":
-            plan.cost_cop += env.bus_fare_cop
-            plan.message = ("Bus estimado sobre la red vial (sin rutas ni horarios oficiales); "
-                            "el costo es la tarifa básica.")
-        elif mode == "bicicleta":
+        if mode == "bicicleta":
             plan.message = "Bicicleta sobre la red peatonal de OSM; la ruta minimiza distancia."
         else:
             plan.message = "Costo = combustible estimado; no incluye parqueadero ni peajes."

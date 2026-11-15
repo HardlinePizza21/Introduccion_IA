@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, asdict
 # Se mantiene pequeña para que la descarga OSM y la búsqueda sean rápidas en la demo.
 BBOX = (-75.600, 6.195, -75.555, 6.272)
 
-MODES = ("carro", "bus", "bicicleta")
+MODES = ("carro", "bicicleta")
 
 # Clases de vía OSM agrupadas -> velocidad base (km/h) a flujo libre por modo.
 # SUPUESTO ajustable: valores de referencia urbanos, NO medidos (ver README).
@@ -38,7 +38,6 @@ class EnvParams:
 
     # Velocidades base a flujo libre (km/h) — SUPUESTO
     speed_car: dict = field(default_factory=lambda: {"troncal": 60.0, "arteria": 45.0, "colectora": 35.0, "local": 25.0})
-    speed_bus: dict = field(default_factory=lambda: {"troncal": 40.0, "arteria": 30.0, "colectora": 25.0, "local": 20.0})
     speed_bike_kmh: float = 15.0  # informativa; la bicicleta optimiza distancia
 
     # Congestión: factor multiplicativo sobre la velocidad en horas pico (0 < f <= 1) — SUPUESTO
@@ -51,12 +50,6 @@ class EnvParams:
     car_consumption_l_100km: float = 8.0  # SUPUESTO: consumo urbano típico de un carro particular
     gasoline_price_cop_gal: float = 16251.0  # FUENTE: precio de referencia Medellín nov-2026 (CREG/MinEnergía)
     gasoline_kgco2_l: float = 2.31  # SUPUESTO (≈ factor IPCC 2006); verificar con calculadora FECOC de UPME
-
-    # Bus (diésel), emisiones repartidas por pasajero
-    bus_fare_cop: float = 3000.0  # FUENTE: tarifa básica bus urbano Medellín 2026 (Valora Analitik)
-    bus_consumption_l_100km: float = 35.0  # SUPUESTO
-    diesel_kgco2_l: float = 2.68  # SUPUESTO (≈ factor IPCC 2006)
-    bus_occupancy: float = 30.0  # SUPUESTO: pasajeros promedio a bordo
 
     @property
     def gasoline_price_cop_l(self) -> float:

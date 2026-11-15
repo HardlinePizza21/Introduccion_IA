@@ -10,8 +10,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from movilidad import pico_placa  # noqa: E402
-from movilidad.agent import MobilityAgent  # noqa: E402
-from movilidad.config import AlgoParams, EnvParams, Weights  # noqa: E402
+from movilidad.agent import MobilityAgent, TOOLS  # noqa: E402
+from movilidad.config import AlgoParams, EnvParams, MODES, Weights  # noqa: E402
 from movilidad.data import Edge, RoadGraph  # noqa: E402
 from movilidad.planner import Planner, build_adjacency, edge_metrics  # noqa: E402
 from movilidad.rag import DocIndex  # noqa: E402
@@ -117,9 +117,18 @@ def test_parameter_change_changes_route_metrics(grid_planner):
     assert cheap.cost_cop == 0
 
 
-def test_bus_cost_is_fare(grid_planner):
-    p = grid_planner.plan((6.200, -75.580), (6.211, -75.569), "bus", 8)
-    assert p.found and p.cost_cop == pytest.approx(EnvParams().bus_fare_cop)
+@pytest.mark.parametrize("mode", ["bus", "metro"])
+def test_unrouted_transit_modes_are_not_supported(grid_planner, mode):
+    with pytest.raises(ValueError, match="Modo desconocido"):
+        grid_planner.plan((6.200, -75.580), (6.211, -75.569), mode, 8)
+
+
+def test_route_modes_are_car_and_bicycle_only(grid_planner):
+    plans = grid_planner.compare((6.200, -75.580), (6.211, -75.569))
+    plan_route = next(tool["function"] for tool in TOOLS if tool["function"]["name"] == "plan_route")
+    assert MODES == ("carro", "bicicleta")
+    assert [plan.mode for plan in plans] == list(MODES)
+    assert plan_route["parameters"]["properties"]["mode"]["enum"] == list(MODES)
 
 
 def test_bike_optimizes_distance(grid_planner):

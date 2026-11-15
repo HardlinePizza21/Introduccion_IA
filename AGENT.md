@@ -4,7 +4,6 @@
 
 Implementar un MVP reproducible en Python para comparar rutas y modos de movilidad en el Valle de Aburrá. El usuario elegirá origen, destino, modo y hora de salida estimada, configurará los supuestos que definen el entorno de búsqueda y recibirá rutas alternativas, métricas y explicaciones desde un dashboard.
 
-El repositorio no contiene actualmente archivos de proyecto. `Quiz1.md` figura eliminado en el worktree; conservar ese cambio sin restaurarlo.
 
 ## Decisiones de diseño
 

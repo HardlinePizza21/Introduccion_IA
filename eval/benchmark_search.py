@@ -27,7 +27,6 @@ from movilidad.search import astar, bfs, dijkstra, haversine_m, make_heuristic  
 SCENARIOS = [
     ("carro", 8, "tiempo", Weights(time=1)),
     ("carro", 14, "multiobjetivo", Weights(distance=0.2, time=1, cost=0.5, emissions=1)),
-    ("bus", 18, "tiempo", Weights(time=1)),
     ("bicicleta", 10, "distancia", Weights(distance=1)),
 ]
 

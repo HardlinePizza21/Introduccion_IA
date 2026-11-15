@@ -4,26 +4,21 @@ Pares aleatorios por escenario: 100 (semilla 7, distancia recta >= 1 km). Red: O
 
 | escenario               | algoritmo   |   expandidos_media |   tiempo_ms_media |   pct_optimo |   sobrecosto_pct_medio |
 |:------------------------|:------------|-------------------:|------------------:|-------------:|-----------------------:|
-| bicicleta-distancia-10h | astar       |            2245.74 |              8.79 |          100 |                   0    |
-| bicicleta-distancia-10h | astar_w0.5  |            6245.68 |             23.24 |          100 |                   0    |
-| bicicleta-distancia-10h | bfs         |           10137.1  |             10.87 |            0 |                  34.89 |
-| bicicleta-distancia-10h | dijkstra    |            9888.54 |             19.82 |          100 |                   0    |
-| bus-tiempo-18h          | astar       |            1323.96 |              3.24 |          100 |                   0    |
-| bus-tiempo-18h          | astar_w0.5  |            2262.93 |              5.39 |          100 |                   0    |
-| bus-tiempo-18h          | bfs         |            3238.03 |              1.56 |            5 |                  21.18 |
-| bus-tiempo-18h          | dijkstra    |            3245.81 |              3.75 |          100 |                   0    |
-| carro-multiobjetivo-14h | astar       |            1034.88 |              2.53 |          100 |                   0    |
-| carro-multiobjetivo-14h | astar_w0.5  |            2129.16 |              5    |          100 |                   0    |
-| carro-multiobjetivo-14h | bfs         |            3238.03 |              1.42 |            5 |                  20.52 |
-| carro-multiobjetivo-14h | dijkstra    |            3249.81 |              3.58 |          100 |                   0    |
-| carro-tiempo-8h         | astar       |            1336.34 |              3.39 |          100 |                   0    |
-| carro-tiempo-8h         | astar_w0.5  |            2264.3  |              5.55 |          100 |                   0    |
-| carro-tiempo-8h         | bfs         |            3238.03 |              2.22 |            5 |                  25.03 |
-| carro-tiempo-8h         | dijkstra    |            3242.06 |              3.87 |          100 |                   0    |
+| bicicleta-distancia-10h | astar       |            2063.02 |              9.19 |          100 |                   0    |
+| bicicleta-distancia-10h | astar_w0.5  |            6861.57 |             28.2  |          100 |                   0    |
+| bicicleta-distancia-10h | bfs         |           10311.9  |             13.51 |            0 |                  39.43 |
+| bicicleta-distancia-10h | dijkstra    |           11103.5  |             26.86 |          100 |                   0    |
+| carro-multiobjetivo-14h | astar       |             858.56 |              2.78 |          100 |                   0    |
+| carro-multiobjetivo-14h | astar_w0.5  |            1942.74 |              6.1  |          100 |                   0    |
+| carro-multiobjetivo-14h | bfs         |            2859.3  |              2.45 |            6 |                  15.68 |
+| carro-multiobjetivo-14h | dijkstra    |            2991.85 |              5.09 |          100 |                   0    |
+| carro-tiempo-8h         | astar       |            1101.95 |              3.57 |          100 |                   0    |
+| carro-tiempo-8h         | astar_w0.5  |            2028    |              6.35 |          100 |                   0    |
+| carro-tiempo-8h         | bfs         |            2859.3  |              2.3  |            7 |                  20.86 |
+| carro-tiempo-8h         | dijkstra    |            2958.96 |              5.03 |          100 |                   0    |
 
 | escenario               |   reduccion_expandidos_astar_vs_dijkstra_pct |   mediana_ratio |
 |:------------------------|---------------------------------------------:|----------------:|
-| bicicleta-distancia-10h |                                         78.8 |           0.2   |
-| bus-tiempo-18h          |                                         61.5 |           0.374 |
-| carro-multiobjetivo-14h |                                         70.3 |           0.29  |
-| carro-tiempo-8h         |                                         61   |           0.37  |
+| bicicleta-distancia-10h |                                         82.1 |           0.167 |
+| carro-multiobjetivo-14h |                                         72.9 |           0.272 |
+| carro-tiempo-8h         |                                         64.8 |           0.348 |
