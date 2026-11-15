@@ -51,6 +51,26 @@ PLACES = {
     "Unicentro Medellín": (6.2411, -75.5868),
 }
 
+METRO_LINE_A_ORDER = (
+    "Universidad", "Hospital", "Prado", "Parque Berrío", "San Antonio",
+    "Alpujarra", "Exposiciones", "Industriales", "Poblado",
+)
+
+
+def metro_line_a_stations(stations: list[dict]) -> list[dict]:
+    """Ordena las estaciones de Línea A disponibles en el área de estudio."""
+    by_name = {
+        station["name"]: station for station in stations
+        if station.get("line") == "Metro" and station.get("name") in METRO_LINE_A_ORDER
+    }
+    return [by_name[name] for name in METRO_LINE_A_ORDER if name in by_name]
+
+
+def metro_line_a_geometry(stations: list[dict]) -> list[tuple[float, float]]:
+    """Trazo esquemático de Línea A enlazando los centros de estación disponibles."""
+    return [(station["lat"], station["lon"]) for station in metro_line_a_stations(stations)]
+
+
 # Filtros equivalentes a los tipos de red de OSMnx (osmnx/_overpass.py).
 _EXCLUDE = {
     "drive": {"abandoned", "bridleway", "bus_guideway", "construction", "corridor", "cycleway", "elevator",

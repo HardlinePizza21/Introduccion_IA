@@ -21,4 +21,4 @@ El pago se hace con la tarjeta Cívica (ver tarifas_transporte_2026.md). Desde e
 La "Cultura Metro" agrupa normas de convivencia: respetar la fila y la línea amarilla, dejar salir antes de entrar, ceder la silla azul a personas con prioridad y no comer dentro de los trenes.
 
 ## Uso en este proyecto
-El dashboard muestra las estaciones de Metro, tranvía y cable presentes en OpenStreetMap dentro del área de estudio. La herramienta nearest_metro_station calcula la estación más cercana a un lugar por distancia en línea recta.
+El dashboard muestra las estaciones de Metro, tranvía y cable presentes en OpenStreetMap dentro del área de estudio. La alternativa de transporte público conecta caminatas sobre la red peatonal con estaciones disponibles de Línea A; calcula la tarifa frecuente de referencia y estima tiempos con velocidad promedio y espera supuestas. El mapa enlaza los centros de las estaciones en orden con un trazo esquemático, no con geometría oficial del ferrocarril. No se modelan horarios, transbordos ni otras líneas. La herramienta nearest_metro_station calcula la estación más cercana a un lugar por distancia en línea recta.

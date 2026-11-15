@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, asdict
 # Se mantiene pequeña para que la descarga OSM y la búsqueda sean rápidas en la demo.
 BBOX = (-75.600, 6.195, -75.555, 6.272)
 
-MODES = ("carro", "bicicleta")
+MODES = ("carro", "bicicleta", "metro")
 
 # Clases de vía OSM agrupadas -> velocidad base (km/h) a flujo libre por modo.
 # SUPUESTO ajustable: valores de referencia urbanos, NO medidos (ver README).
@@ -39,6 +39,7 @@ class EnvParams:
     # Velocidades base a flujo libre (km/h) — SUPUESTO
     speed_car: dict = field(default_factory=lambda: {"troncal": 60.0, "arteria": 45.0, "colectora": 35.0, "local": 25.0})
     speed_bike_kmh: float = 15.0  # informativa; la bicicleta optimiza distancia
+    walk_speed_kmh: float = 4.5  # SUPUESTO para tramos a pie de la alternativa Metro
 
     # Congestión: factor multiplicativo sobre la velocidad en horas pico (0 < f <= 1) — SUPUESTO
     peak_hours: tuple = (6, 7, 8, 17, 18, 19)
@@ -50,6 +51,11 @@ class EnvParams:
     car_consumption_l_100km: float = 8.0  # SUPUESTO: consumo urbano típico de un carro particular
     gasoline_price_cop_gal: float = 16251.0  # FUENTE: precio de referencia Medellín nov-2026 (CREG/MinEnergía)
     gasoline_kgco2_l: float = 2.31  # SUPUESTO (≈ factor IPCC 2006); verificar con calculadora FECOC de UPME
+
+    # Metro: tarifa frecuente de 2026 y velocidades/espera estimadas.
+    metro_speed_kmh: float = 35.0
+    metro_boarding_min: float = 5.0
+    metro_fare_cop: float = 3820.0
 
     @property
     def gasoline_price_cop_l(self) -> float:
@@ -96,5 +102,6 @@ class AlgoParams:
 SOURCES = {
     "gasoline_price": "Circular CREG 371 de 2026 / MinEnergía: gasolina corriente Medellín $16.251/galón (nov-2026). https://gestornormativo.creg.gov.co/gestor/entorno/docs/originales/Circular_CREG_371_2026/",
     "bus_fare": "Valora Analitik (ene-2026): bus urbano Medellín $3.000. https://www.valoraanalitik.com/tarifas-del-transporte-en-las-principales-ciudades-para-2026/",
+    "metro_fare": "Publimetro (ene-2026): tarifa frecuente Metro Medellín $3.820. https://www.publimetro.co/noticias/2026/01/09/asi-quedaron-las-tarifas-de-transporte-publico-en-medellin-pasaje-del-metro-subio-a-3820-pesos/",
     "osm": "© OpenStreetMap contributors (ODbL), descargado con OSMnx.",
 }

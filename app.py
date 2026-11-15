@@ -21,13 +21,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from movilidad.agent import LLMConfigError, MobilityAgent  # noqa: E402
 from movilidad.config import BBOX, MODES, SOURCES, AlgoParams, EnvParams, Weights  # noqa: E402
-from movilidad.data import DATA_STATUS, PLACES, DataAccessError, load_metro_stations  # noqa: E402
+from movilidad.data import (DATA_STATUS, PLACES, DataAccessError, load_metro_stations,
+                            metro_line_a_geometry)  # noqa: E402
 from movilidad.planner import Planner  # noqa: E402
 from movilidad.rag import DocIndex  # noqa: E402
 
 st.set_page_config(page_title="Copiloto de Movilidad – Valle de Aburrá", page_icon="🚦", layout="wide")
-MODE_COLORS = {"carro": "#c0392b", "bicicleta": "#1e8449"}
-MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie"}
+MODE_COLORS = {"carro": "#c0392b", "bicicleta": "#1e8449", "metro": "#7d3c98"}
+MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie", "metro": "A pie + Metro (Línea A)"}
 CUSTOM = "📍 Coordenadas personalizadas"
 
 
@@ -53,15 +54,56 @@ def get_stations():
         return []
 
 
+def build_route_map(shown_plans):
+    fmap = folium.Map(location=[(BBOX[1] + BBOX[3]) / 2, (BBOX[0] + BBOX[2]) / 2], zoom_start=13,
+                      tiles="OpenStreetMap")
+    stations_data = get_stations()
+    line_a = metro_line_a_geometry(stations_data)
+    if len(line_a) > 1:
+        folium.PolyLine(
+            line_a, color="#9b59b6", weight=3, opacity=0.55, dash_array="6 8",
+            tooltip="Línea A esquemática; estaciones conectadas en orden",
+        ).add_to(fmap)
+    stations = folium.FeatureGroup("Estaciones Metro / Metroplús")
+    for station in stations_data:
+        folium.CircleMarker(
+            [station["lat"], station["lon"]], radius=5, color="#7d3c98", fill=True, fill_opacity=0.9,
+            tooltip=f"{station['line']}: {station['name']}",
+        ).add_to(stations)
+    stations.add_to(fmap)
+    for mode, route in shown_plans.items():
+        legs = route.legs or [{
+            "mode": mode, "geometry": route.geometry, "time_min": route.time_min, "description": MODE_LABELS[mode],
+        }]
+        for leg in legs:
+            if len(leg["geometry"]) < 2:
+                continue
+            leg_mode = leg["mode"]
+            color = "#1e8449" if leg_mode == "a pie" else MODE_COLORS[leg_mode]
+            folium.PolyLine(
+                leg["geometry"], color=color, weight=7 if leg_mode == "metro" else 5, opacity=0.9,
+                tooltip=f"{MODE_LABELS[mode]} · {leg['description']} ({leg['time_min']:.1f} min)",
+            ).add_to(fmap)
+    any_plan = next(iter(shown_plans.values()), None)
+    if any_plan:
+        folium.Marker(any_plan.origin, tooltip="Origen", icon=folium.Icon(color="green", icon="play")).add_to(fmap)
+        folium.Marker(any_plan.destination, tooltip="Destino", icon=folium.Icon(color="red", icon="flag")).add_to(fmap)
+    folium.LayerControl().add_to(fmap)
+    return fmap
+
+
 @st.cache_data(show_spinner="Calculando tiempos por hora del día…")
 def hourly_profile(origin, destination, env_json: str, w_json: str):
     env, w = EnvParams(**json.loads(env_json)), Weights(**json.loads(w_json))
     rows = []
-    for h in range(24):
-        for m in MODES:
+    for m in MODES:
+        hours = range(24) if m != "metro" else (8,)
+        for h in hours:
             p = get_planner().plan(origin, destination, m, h, env, w)
             if p.found:
-                rows.append({"hora": h, "modo": MODE_LABELS[m], "tiempo_min": round(p.time_min, 1)})
+                profile_hours = range(24) if m == "metro" else (h,)
+                rows.extend({"hora": profile_hour, "modo": MODE_LABELS[m], "tiempo_min": round(p.time_min, 1)}
+                            for profile_hour in profile_hours)
     return pd.DataFrame(rows)
 
 
@@ -83,10 +125,10 @@ def place_input(label, default):
 origin = place_input("Origen", "Universidad EAFIT")
 destination = place_input("Destino", "Universidad de Antioquia")
 hour = st.sidebar.slider("Hora de salida (hora local)", 0, 23, 8,
-                         help="Cambia el factor de congestión supuesto para carro.")
-modes = st.sidebar.multiselect("Modos de ruta A*", list(MODES), default=list(MODES),
+                         help="Cambia el factor de congestión del carro; el Metro no usa horarios publicados.")
+modes = st.sidebar.multiselect("Alternativas de transporte", list(MODES), default=list(MODES),
                                format_func=lambda mode: MODE_LABELS[mode])
-st.sidebar.caption("Metro: consulta de estaciones; no se calcula una ruta en Metro.")
+st.sidebar.caption("La alternativa Metro combina caminata por OSM con estaciones de Línea A.")
 
 d = EnvParams()
 with st.sidebar.expander("1 · Parámetros del entorno", expanded=False):
@@ -94,23 +136,32 @@ with st.sidebar.expander("1 · Parámetros del entorno", expanded=False):
     st.markdown("**Velocidad base del carro (km/h) a flujo libre**")
     speed_car = {c: st.number_input(f"Carro – {c}", 5.0, 100.0, v, 5.0, key=f"car_{c}") for c, v in d.speed_car.items()}
     speed_bike = st.number_input("Bicicleta (km/h, informativa)", 5.0, 35.0, d.speed_bike_kmh, 1.0)
+    walk_speed = st.number_input("Caminata hacia/desde Metro (km/h, supuesto)", 2.0, 8.0, d.walk_speed_kmh, 0.5)
     peak = st.slider("Factor de congestión en hora pico (6–8 h, 17–19 h)", 0.2, 1.0, d.peak_factor, 0.05,
                      help="Multiplica la velocidad del carro. 1 = sin congestión.")
     shoulder = st.slider("Factor en horas intermedias (9, 12, 13, 16, 20 h)", 0.2, 1.0, d.shoulder_factor, 0.05)
     cons = st.number_input("Consumo del carro (L/100 km)", 3.0, 25.0, d.car_consumption_l_100km, 0.5)
     price = st.number_input("Precio gasolina (COP/galón)", 0.0, 40000.0, d.gasoline_price_cop_gal, 100.0,
                             help="Fuente: CREG/MinEnergía, Medellín nov-2026.")
+    metro_speed = st.number_input("Velocidad promedio Metro (km/h, supuesto)", 5.0, 80.0, d.metro_speed_kmh, 1.0)
+    metro_wait = st.number_input("Espera para abordar Metro (min, supuesto)", 0.0, 30.0, d.metro_boarding_min, 1.0)
+    metro_fare = st.number_input("Tarifa Metro frecuente (COP)", 0.0, 10000.0, d.metro_fare_cop, 50.0,
+                                 help="Referencia documental 2026; tarifa individual y perfil pueden variar.")
 env = EnvParams(
     speed_car=speed_car,
     speed_bike_kmh=speed_bike,
+    walk_speed_kmh=walk_speed,
     peak_factor=peak,
     shoulder_factor=shoulder,
     car_consumption_l_100km=cons,
     gasoline_price_cop_gal=price,
+    metro_speed_kmh=metro_speed,
+    metro_boarding_min=metro_wait,
+    metro_fare_cop=metro_fare,
 )
 
 with st.sidebar.expander("2 · Preferencias (pesos del costo)", expanded=True):
-    st.caption("Costo de un tramo = w_d·km + w_t·min + w_c·(miles COP) + w_e·(100 g CO₂). La bicicleta siempre minimiza distancia.")
+    st.caption("Costo = w_d·km + w_t·min + w_c·(miles COP) + w_e·(100 g CO₂). Bicicleta minimiza distancia.")
     weights = Weights(
         distance=st.slider("Peso distancia", 0.0, 5.0, 0.0, 0.1),
         time=st.slider("Peso tiempo", 0.0, 5.0, 1.0, 0.1),
@@ -148,33 +199,31 @@ tab_routes, tab_hours, tab_chat, tab_eval = st.tabs(["🗺️ Rutas", "⏱️ Ho
 with tab_routes:
     if not modes:
         st.info("Seleccione al menos un modo en la barra lateral.")
+    found_plans = {m: p for m, p in plans.items() if p.found}
+    winner = min(found_plans.values(), key=lambda route: route.selection_cost, default=None)
     rows = []
     for m, p in plans.items():
-        rows.append({"Modo": MODE_LABELS[m], "Distancia (km)": round(p.distance_km, 2), "Tiempo (min)": round(p.time_min, 1),
+        rows.append({"Modo": f"🏆 {MODE_LABELS[m]}" if winner is p else MODE_LABELS[m],
+                     "Distancia (km)": round(p.distance_km, 2), "Tiempo (min)": round(p.time_min, 1),
                      "Costo (COP)": round(p.cost_cop), "CO₂ (kg)": round(p.co2_kg, 3),
+                     "Puntaje de preferencias": round(p.selection_cost, 3),
                      "Nodos expandidos": p.expanded, "Búsqueda (ms)": round(p.runtime_ms, 1),
                      "Nota": p.message if p.found else f"⚠️ {p.message}"})
     col_map, col_tab = st.columns([3, 2])
     with col_map:
-        fmap = folium.Map(location=[(BBOX[1] + BBOX[3]) / 2, (BBOX[0] + BBOX[2]) / 2], zoom_start=13,
-                          tiles="OpenStreetMap")
-        stations = folium.FeatureGroup("Estaciones Metro / Metroplús")
-        for s in get_stations():
-            folium.CircleMarker([s["lat"], s["lon"]], radius=5, color="#7d3c98", fill=True, fill_opacity=0.9,
-                                tooltip=f"{s['line']}: {s['name']}").add_to(stations)
-        stations.add_to(fmap)
-        for m, p in plans.items():
-            if p.found:
-                folium.PolyLine(p.geometry, color=MODE_COLORS[m], weight=6 if m == "carro" else 4, opacity=0.8,
-                                tooltip=f"{MODE_LABELS[m]}: {p.distance_km:.2f} km · {p.time_min:.1f} min").add_to(fmap)
-        any_plan = next(iter(plans.values()), None)
-        if any_plan:
-            folium.Marker(any_plan.origin, tooltip="Origen", icon=folium.Icon(color="green", icon="play")).add_to(fmap)
-            folium.Marker(any_plan.destination, tooltip="Destino", icon=folium.Icon(color="red", icon="flag")).add_to(fmap)
-        folium.LayerControl().add_to(fmap)
-        st_folium(fmap, height=520, use_container_width=True, returned_objects=[])
+        winner_tab, all_routes_tab = st.tabs(["🏆 Ruta ganadora", "🌐 Todas las rutas"])
+        with winner_tab:
+            if winner:
+                st.caption(f"Menor puntaje con las preferencias actuales: {MODE_LABELS[winner.mode]}.")
+                st_folium(build_route_map({winner.mode: winner}), height=520, use_container_width=True,
+                          returned_objects=[], key="winner_route_map")
+            else:
+                st.info("No se encontró una ruta ganadora para los modos seleccionados.")
+        with all_routes_tab:
+            st_folium(build_route_map(found_plans), height=520, use_container_width=True,
+                      returned_objects=[], key="all_route_map")
         st.caption("Rojo: carro · Verde: bicicleta / a pie · Morado: estaciones de Metro. "
-                   "La opción bicicleta / a pie usa la red peatonal de OSM; velocidades estimadas, no tráfico real.")
+                   "La Línea A se dibuja esquemáticamente entre estaciones; sus tramos no son geometría ferroviaria oficial.")
     with col_tab:
         st.subheader("Comparación de modos")
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -191,12 +240,14 @@ with tab_routes:
 
     st.subheader("A* frente a Dijkstra para esta consulta")
     comp = []
-    for m in modes:
+    for m in (mode for mode in modes if mode != "metro"):
         for a in ("astar", "dijkstra", "bfs"):
             p = planner.plan(origin, destination, m, hour, env, weights, AlgoParams(a, hw if a == "astar" else 1.0))
             comp.append({"Modo": MODE_LABELS[m], "Algoritmo": a, "Nodos expandidos": p.expanded,
                          "Costo ponderado": round(p.weighted_cost, 4), "Tiempo (min)": round(p.time_min, 1)})
     st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
+    if "metro" in modes:
+        st.caption("La alternativa a pie + Metro compara estaciones y estima tiempo; no corresponde a una búsqueda A* en las vías férreas.")
 
     st.subheader("Detalle por tramo")
     found_modes = [m for m, p in plans.items() if p.found]
@@ -207,7 +258,7 @@ with tab_routes:
 
 with tab_hours:
     st.subheader("Tiempo estimado de viaje según la hora de salida")
-    st.caption("Recalcula la ruta óptima con A* para cada hora (factor de congestión supuesto, no tráfico medido).")
+    st.caption("Recalcula la ruta por hora para carro; la caminata + Metro se mantiene constante porque no se modelan horarios ni variación temporal.")
     prof = hourly_profile(origin, destination, json.dumps(asdict(env)), json.dumps(asdict(weights)))
     if prof.empty:
         st.warning("No hay ruta para estos puntos.")

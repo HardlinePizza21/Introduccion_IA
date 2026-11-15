@@ -2,13 +2,13 @@
 
 Proyecto final SI3003, Inteligencia Artificial, Universidad EAFIT, 2026-1 (idea 3.2).
 
-El usuario elige origen, destino, hora de salida, modos de ruta (carro o bicicleta/a pie) y sus preferencias (tiempo, distancia, costo, emisiones). La aplicación calcula rutas con un **A\* propio** sobre las redes vehicular y peatonal de **OpenStreetMap**, las compara en un mapa y en una tabla, y ofrece un **agente LLM con RAG** que responde preguntas sobre rutas, pico y placa, tarifas y Metro, y cita sus fuentes. El Metro se conserva como consulta de estaciones; no se calcula una ruta en Metro. No se ofrecen rutas de bus porque no hay información centralizada de recorridos.
+El usuario elige origen, destino, hora de salida, modos de ruta (carro, bicicleta/a pie o caminata + Metro Línea A) y sus preferencias (tiempo, distancia, costo, emisiones). La aplicación calcula alternativas con un **A\* propio** sobre las redes vehicular y peatonal de **OpenStreetMap**, las compara en dos vistas del mapa (ganadora y todas las rutas) y en una tabla, y ofrece un **agente LLM con RAG** que responde preguntas sobre rutas, pico y placa, tarifas y Metro, y cita sus fuentes. El itinerario Metro conecta caminatas hasta y desde estaciones con la Línea A disponible en el área. No se ofrecen rutas de bus porque no hay información centralizada de recorridos.
 
 | Componente | Implementación |
 |---|---|
 | Parte 1 (técnica clásica) | A\*, Dijkstra (UCS) y BFS propios ([src/movilidad/search.py](src/movilidad/search.py)), costo multiobjetivo ([src/movilidad/planner.py](src/movilidad/planner.py)), heurística admisible y consistente |
 | Parte 2 (IA moderna) | Loop agéntico manual con *tool calling* sobre un endpoint compatible con OpenAI ([src/movilidad/agent.py](src/movilidad/agent.py)), RAG con fastembed + FAISS ([src/movilidad/rag.py](src/movilidad/rag.py)), 5 herramientas |
-| Dashboard | Streamlit ([app.py](app.py)): mapa de rutas y estaciones, tabla y gráfico comparativo, perfil por hora, detalle por tramo, chat y pestaña de evaluación |
+| Dashboard | Streamlit ([app.py](app.py)): vistas de mapa para la ruta ganadora y todas las rutas, estaciones y trazo esquemático de Línea A, tabla y gráfico comparativo, perfil por hora, detalle por tramo, chat y evaluación |
 
 ## 1. Instalación
 
@@ -49,7 +49,7 @@ Los *secrets* `OSM_SOURCE="snapshot"` y `RAG_BACKEND="tfidf"` mantienen la app p
 ## 4. Reproducir la evaluación
 
 ```bash
-pytest -q                                  # 41 pruebas: optimalidad, heurística, costos, pico y placa, RAG, loop del agente, plan B
+pytest -q                                  # pruebas: optimalidad, heurística, costos, pico y placa, RAG, Metro, loop del agente, plan B
 python eval/benchmark_search.py --pairs 100   # A* vs Dijkstra vs BFS -> eval/results/benchmark_*.{csv,md}
 python eval/run_agent_eval.py              # 14 preguntas fijas al agente (requiere LLM_API_KEY) -> eval/results/agent_eval.{csv,md}
 ```
@@ -78,8 +78,8 @@ DECLARACION_IA.md           Declaración de uso de IA generativa
 
 | Herramienta | Qué hace |
 |---|---|
-| `plan_route(origin, destination, mode, hour, optimize)` | A\* en un modo; devuelve km, min, COP, kg CO₂ y vías principales |
-| `compare_modes(origin, destination, hour)` | Ejecuta A\* para carro y bicicleta/a pie |
+| `plan_route(origin, destination, mode, hour, optimize)` | A\* para carro o bicicleta/a pie; alternativa multimodal caminata + Línea A para Metro |
+| `compare_modes(origin, destination, hour)` | Compara carro, bicicleta/a pie y caminata + Metro Línea A |
 | `search_docs(query)` | Recupera los 4 fragmentos más similares del corpus, con su cita `[archivo § sección]` |
 | `check_pico_y_placa(plate, date, hour, vehicle, fuel)` | Aplica la rotación 2026-2 de forma determinística |
 | `nearest_metro_station(place)` | Estación de Metro/Metroplús más cercana según OSM |
@@ -90,16 +90,16 @@ Los errores de las herramientas (lugar desconocido, fuera del área, argumentos 
 
 - **Red vial y estaciones:** © colaboradores de OpenStreetMap, licencia ODbL, mediante la API 0.6 (`api.openstreetmap.org`), procesada con OSMnx. Se usa la API principal porque los servidores Overpass respondían 502 por saturación durante el desarrollo. El volumen descargado es pequeño (12 recuadros, una sola vez) y queda en caché.
 - **Precio de la gasolina:** Circular CREG 371 de 2026: $16.251 por galón en Medellín (noviembre de 2026).
-- **Tarifas 2026 (referencia documental):** Publimetro y Valora Analitik (enero de 2026): Metro $3.820 (frecuente), bus urbano $3.000. La tarifa de bus no se usa para calcular rutas.
+- **Tarifas 2026 (referencia documental):** Publimetro y Valora Analitik (enero de 2026): Metro $3.820 (frecuente), bus urbano $3.000. La tarifa Metro frecuente se usa como referencia ajustable en la alternativa multimodal; la tarifa de bus no se usa.
 - **Pico y placa 2026-2:** Alcaldía de Medellín, El Colombiano y Telemedellín.
-- **Supuestos (no medidos):** velocidades base por tipo de vía, factores de congestión, consumo y factor de emisión del carro (aproximación IPCC), y velocidad informativa de bicicleta. Los parámetros aplicables son ajustables desde el dashboard y están rotulados como supuestos en [src/movilidad/config.py](src/movilidad/config.py) y en el detalle por tramo.
+- **Supuestos (no medidos):** velocidades base por tipo de vía, factores de congestión, consumo y factor de emisión del carro (aproximación IPCC), velocidad informativa de bicicleta, velocidad al caminar, velocidad promedio Metro y espera de abordaje. Los parámetros aplicables son ajustables desde el dashboard y están rotulados como supuestos en [src/movilidad/config.py](src/movilidad/config.py) y en el detalle por tramo.
 
 Las URL completas están en cada documento de [corpus/](corpus/).
 
 ## 8. Limitaciones
 
 - No hay tráfico real: la hora de salida solo cambia un factor de congestión supuesto.
-- No se calculan rutas de bus por falta de una fuente centralizada de recorridos. El Metro se limita a mostrar estaciones y consultar la más cercana; no se calcula una ruta en Metro.
+- No se calculan rutas de bus por falta de una fuente centralizada de recorridos. La alternativa Metro solo combina caminata por OSM con estaciones de Línea A presentes en el área; une sus centros con un trazo esquemático, sin geometría ferroviaria oficial, horarios, transbordos ni otras líneas. Velocidad y espera son supuestos.
 - La opción bicicleta/a pie usa la red peatonal de OSM, sin ciclorrutas ni pendientes. Su velocidad es una estimación de bicicleta; no representa un perfil peatonal independiente. En una ciudad de ladera como Medellín, la pendiente importa.
 - El área cubierta es Centro, Laureles y El Poblado (aproximadamente 5 × 8,5 km). Puntos a más de 400 m de la red se rechazan.
 - El corpus es un resumen hecho por el equipo a partir de fuentes de prensa y oficiales. Puede quedar desactualizado y no reemplaza la norma.

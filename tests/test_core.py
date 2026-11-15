@@ -40,7 +40,13 @@ def grid_graph(n=12, seed=0):
 
 @pytest.fixture(scope="module")
 def grid_planner():
-    return Planner({"drive": grid_graph(), "walk": grid_graph(seed=1)})
+    stations = [
+        {"name": "Universidad", "line": "Metro", "lat": 6.202, "lon": -75.579},
+        {"name": "Hospital", "line": "Metro", "lat": 6.205, "lon": -75.576},
+        {"name": "Prado", "line": "Metro", "lat": 6.208, "lon": -75.573},
+        {"name": "Poblado", "line": "Metro", "lat": 6.210, "lon": -75.571},
+    ]
+    return Planner({"drive": grid_graph(), "walk": grid_graph(seed=1)}, stations=stations)
 
 
 def test_haversine_known_distance():
@@ -117,18 +123,59 @@ def test_parameter_change_changes_route_metrics(grid_planner):
     assert cheap.cost_cop == 0
 
 
-@pytest.mark.parametrize("mode", ["bus", "metro"])
+@pytest.mark.parametrize("mode", ["bus"])
 def test_unrouted_transit_modes_are_not_supported(grid_planner, mode):
     with pytest.raises(ValueError, match="Modo desconocido"):
         grid_planner.plan((6.200, -75.580), (6.211, -75.569), mode, 8)
 
 
-def test_route_modes_are_car_and_bicycle_only(grid_planner):
+def test_route_modes_include_car_bicycle_and_metro(grid_planner):
     plans = grid_planner.compare((6.200, -75.580), (6.211, -75.569))
     plan_route = next(tool["function"] for tool in TOOLS if tool["function"]["name"] == "plan_route")
-    assert MODES == ("carro", "bicicleta")
+    assert MODES == ("carro", "bicicleta", "metro")
     assert [plan.mode for plan in plans] == list(MODES)
     assert plan_route["parameters"]["properties"]["mode"]["enum"] == list(MODES)
+
+
+def test_metro_route_combines_walking_and_line_a(grid_planner):
+    p = grid_planner.plan((6.200, -75.580), (6.211, -75.569), "metro", 8)
+    assert p.found
+    assert [leg["mode"] for leg in p.legs] == ["a pie", "metro", "a pie"]
+    assert p.cost_cop == pytest.approx(EnvParams().metro_fare_cop)
+    assert p.co2_kg == 0
+    assert p.summary()["itinerario"][1]["detalle"].startswith("Línea A:")
+    assert p.selection_cost == pytest.approx(p.weighted_cost)
+    assert p.selection_cost == pytest.approx(p.time_min)
+
+
+def test_bicycle_selection_score_uses_dashboard_preferences(grid_planner):
+    p = grid_planner.plan(
+        (6.200, -75.580), (6.211, -75.569), "bicicleta", 8, weights=Weights(time=1.0)
+    )
+    assert p.selection_cost == pytest.approx(p.time_min)
+    assert p.weighted_cost == pytest.approx(p.distance_km)
+
+
+def test_metro_walk_speed_changes_estimated_itinerary_time(grid_planner):
+    origin, destination = (6.200, -75.580), (6.211, -75.569)
+    slow = grid_planner.plan(origin, destination, "metro", env=EnvParams(walk_speed_kmh=3.0))
+    fast = grid_planner.plan(origin, destination, "metro", env=EnvParams(walk_speed_kmh=6.0))
+    assert slow.found and fast.found
+    assert fast.time_min < slow.time_min
+
+
+def test_metro_line_a_uses_station_order():
+    from movilidad.data import metro_line_a_geometry, metro_line_a_stations
+
+    stations = [
+        {"name": "Poblado", "line": "Metro", "lat": 6.21, "lon": -75.57},
+        {"name": "Prado", "line": "Metro", "lat": 6.25, "lon": -75.56},
+        {"name": "Universidad", "line": "Metro", "lat": 6.26, "lon": -75.56},
+        {"name": "San Antonio", "line": "Metroplús", "lat": 6.24, "lon": -75.57},
+    ]
+    ordered = metro_line_a_stations(stations)
+    assert [station["name"] for station in ordered] == ["Universidad", "Prado", "Poblado"]
+    assert metro_line_a_geometry(stations) == [(station["lat"], station["lon"]) for station in ordered]
 
 
 def test_bike_optimizes_distance(grid_planner):
