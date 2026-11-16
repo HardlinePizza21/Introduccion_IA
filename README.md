@@ -26,7 +26,7 @@ pip install -r requirements.txt
 cp .env.example .env      # Windows: copy .env.example .env
 ```
 
-Complete `LLM_API_KEY` en `.env`. Por defecto se usa Groq (capa gratuita, `llama-3.3-70b-versatile`). También sirven NVIDIA NIM u Ollama cambiando `LLM_BASE_URL` y `LLM_MODEL` (vea `.env.example`). Sin clave, el mapa, la comparación y la evaluación funcionan; el chat muestra un mensaje explicando qué falta configurar.
+Complete `LLM_API_KEY` en `.env`. Por defecto se usa Groq (capa gratuita, `openai/gpt-oss-120b`). También sirven NVIDIA NIM u Ollama cambiando `LLM_BASE_URL` y `LLM_MODEL` (vea `.env.example`). Sin clave, el mapa, la comparación y la evaluación funcionan; el chat muestra un mensaje explicando qué falta configurar.
 
 ## 3. Ejecutar
 
