@@ -272,9 +272,11 @@ with tab_routes:
     rows = []
     for m, p in plans.items():
         rows.append({"Modo": f"🏆 {MODE_LABELS[m]}" if winner is p else MODE_LABELS[m],
-                     "Distancia (km)": round(p.distance_km, 2), "Tiempo (min)": round(p.time_min, 1),
-                     "Costo (COP)": round(p.cost_cop), "CO₂ (kg)": round(p.co2_kg, 3),
-                     "Puntaje de preferencias": round(p.selection_cost, 3),
+                     "Distancia (km)": round(p.distance_km, 2) if p.found else None,
+                     "Tiempo (min)": round(p.time_min, 1) if p.found else None,
+                     "Costo directo (COP)": round(p.cost_cop) if p.found else None,
+                     "CO₂ (kg)": round(p.co2_kg, 3) if p.found else None,
+                     "Puntaje de preferencias": round(p.selection_cost, 3) if p.found else None,
                      "Nodos expandidos": p.expanded, "Búsqueda (ms)": round(p.runtime_ms, 1),
                      "Nota": p.message if p.found else f"⚠️ {p.message}"})
     route_view = st.segmented_control(
@@ -298,25 +300,94 @@ with tab_routes:
                "Las líneas A, B y T se dibujan esquemáticamente; no son geometría ferroviaria oficial.")
 
     st.subheader("Comparación de modos")
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    found = [r for r in rows if r["Tiempo (min)"] > 0]
-    if found:
-        long = pd.DataFrame(found).melt(id_vars="Modo", value_vars=["Tiempo (min)", "Costo (COP)", "CO₂ (kg)"])
-        chart = alt.Chart(long).mark_bar().encode(
-            x=alt.X("value:Q", title=None), y=alt.Y("Modo:N", title=None),
-            color=alt.Color("Modo:N", scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
-                            legend=None),
-            tooltip=["Modo", "variable", "value"],
-        ).properties(height=80).facet(row=alt.Row("variable:N", title=None)).resolve_scale(x="independent")
-        st.altair_chart(chart, width="stretch")
+    st.dataframe(
+        pd.DataFrame(rows),
+        column_config={
+            "Costo directo (COP)": st.column_config.NumberColumn(
+                format="$%,.0f",
+                help="Carro: combustible estimado; Metro/Tranvía: tarifa; bicicleta: no tiene tarifa modelada.",
+            ),
+        },
+        hide_index=True,
+        width="stretch",
+    )
+    found_plans = {mode: plan for mode, plan in plans.items() if plan.found}
+    if found_plans:
+        st.caption(
+            "Carro: combustible estimado (sin parqueadero ni peajes). Bici: costo y emisiones no modelados. "
+            "Metro/Tranvía: tarifa frecuente estimada. Los gráficos muestran solo rutas encontradas."
+        )
+        chart_modes = {"carro": "Carro", "bicicleta": "Bici", "metro": "Metro/Tranvía"}
+        chart_data = pd.DataFrame([
+            {
+                "Modo": chart_modes[mode],
+                "Modo completo": MODE_LABELS[mode],
+                "Distancia (km)": plan.distance_km,
+                "Tiempo (min)": plan.time_min,
+                "Costo (COP)": plan.cost_cop,
+                "CO₂ (kg)": plan.co2_kg,
+            }
+            for mode, plan in found_plans.items()
+        ])
+        chart_specs = [
+            ("Distancia (km)", "Distancia recorrida", ".1f",
+             "Comparación de la distancia estimada por modo"),
+            ("Tiempo (min)", "Tiempo estimado", ".1f",
+             "Comparación del tiempo estimado por modo"),
+            ("Costo (COP)", "Costo directo estimado", "$,.0f",
+             "Comparación del costo directo estimado en pesos colombianos por modo"),
+            ("CO₂ (kg)", "Emisiones estimadas", ".2f",
+             "Comparación de las emisiones estimadas de dióxido de carbono por modo"),
+        ]
+        mode_order = list(chart_modes.values())
+        color_scale = alt.Scale(
+            domain=mode_order,
+            range=[MODE_COLORS["carro"], MODE_COLORS["bicicleta"], MODE_COLORS["metro"]],
+        )
+        for row_start in range(0, len(chart_specs), 2):
+            chart_columns = st.columns(2)
+            for column, (field, title, value_format, alt_text) in zip(
+                chart_columns, chart_specs[row_start:row_start + 2]
+            ):
+                with column:
+                    with st.container(border=True):
+                        st.markdown(f"**{title}**")
+                        bars = alt.Chart(chart_data).mark_bar().encode(
+                            x=alt.X(field, title=None, axis=alt.Axis(format=value_format)),
+                            y=alt.Y("Modo:N", title=None, sort=mode_order),
+                            color=alt.Color("Modo:N", scale=color_scale, legend=None),
+                            tooltip=[
+                                alt.Tooltip("Modo completo:N", title="Modo"),
+                                alt.Tooltip(field, title=title, format=value_format),
+                            ],
+                        )
+                        values = alt.Chart(chart_data).mark_text(
+                            align="left", baseline="middle", dx=5,
+                        ).encode(
+                            x=alt.X(field, axis=alt.Axis(format=value_format)),
+                            y=alt.Y("Modo:N", sort=mode_order),
+                            text=alt.Text(field, format=value_format),
+                        )
+                        st.altair_chart(
+                            (bars + values).properties(height=115),
+                            width="stretch",
+                            alt=alt_text,
+                        )
 
     st.subheader("A* frente a Dijkstra para esta consulta")
+    st.caption("El costo ponderado usa las unidades de las preferencias; no representa pesos colombianos.")
     comp = []
     for m in (mode for mode in modes if mode != "metro"):
         for a in ("astar", "dijkstra", "bfs"):
             p = planner.plan(origin, destination, m, hour, env, weights, AlgoParams(a, hw if a == "astar" else 1.0))
-            comp.append({"Modo": MODE_LABELS[m], "Algoritmo": a, "Nodos expandidos": p.expanded,
-                         "Costo ponderado": round(p.weighted_cost, 4), "Tiempo (min)": round(p.time_min, 1)})
+            comp.append({
+                "Modo": MODE_LABELS[m],
+                "Algoritmo": a,
+                "Nodos expandidos": p.expanded,
+                "Costo ponderado": round(p.weighted_cost, 4) if p.found else None,
+                "Tiempo (min)": round(p.time_min, 1) if p.found else None,
+                "Estado": "Ruta encontrada" if p.found else p.message,
+            })
     st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
     if "metro" in modes:
         st.caption("La alternativa usa A* sobre la red peatonal y las líneas A/B y T esquemáticas; abordar es opcional y depende del costo ponderado.")
