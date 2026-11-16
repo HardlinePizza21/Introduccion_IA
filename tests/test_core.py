@@ -140,12 +140,33 @@ def test_route_modes_include_car_bicycle_and_metro(grid_planner):
 def test_metro_route_combines_walking_and_line_a(grid_planner):
     p = grid_planner.plan((6.200, -75.580), (6.211, -75.569), "metro", 8)
     assert p.found
-    assert [leg["mode"] for leg in p.legs] == ["a pie", "metro", "a pie"]
+    assert p.legs[0]["mode"] == "a pie"
+    assert p.legs[-1]["mode"] == "a pie"
+    assert "metro" in [leg["mode"] for leg in p.legs]
     assert p.cost_cop == pytest.approx(EnvParams().metro_fare_cop)
     assert p.co2_kg == 0
-    assert p.summary()["itinerario"][1]["detalle"].startswith("Línea A:")
+    assert "Línea A:" in p.summary()["itinerario"][1]["detalle"]
     assert p.selection_cost == pytest.approx(p.weighted_cost)
     assert p.selection_cost == pytest.approx(p.time_min)
+
+
+def test_metro_route_can_choose_walking_without_boarding(grid_planner):
+    p = grid_planner.plan(
+        (6.200, -75.580), (6.211, -75.569), "metro",
+        env=EnvParams(metro_speed_kmh=1.0, metro_boarding_min=30.0),
+    )
+    assert p.found
+    assert [leg["mode"] for leg in p.legs] == ["a pie"]
+    assert p.cost_cop == 0
+    assert "no es necesario abordar" in p.message
+
+
+def test_metro_astar_matches_dijkstra_cost(grid_planner):
+    origin, destination = (6.200, -75.580), (6.211, -75.569)
+    astar_route = grid_planner.plan(origin, destination, "metro", algo=AlgoParams("astar"))
+    dijkstra_route = grid_planner.plan(origin, destination, "metro", algo=AlgoParams("dijkstra"))
+    assert astar_route.found and dijkstra_route.found
+    assert astar_route.weighted_cost == pytest.approx(dijkstra_route.weighted_cost)
 
 
 def test_bicycle_selection_score_uses_dashboard_preferences(grid_planner):
@@ -168,14 +189,61 @@ def test_metro_line_a_uses_station_order():
     from movilidad.data import metro_line_a_geometry, metro_line_a_stations
 
     stations = [
+        {"name": "Aguacatala", "line": "Metro", "lat": 6.194, "lon": -75.582},
+        {"name": "Ayurá", "line": "Metro", "lat": 6.186, "lon": -75.586},
         {"name": "Poblado", "line": "Metro", "lat": 6.21, "lon": -75.57},
         {"name": "Prado", "line": "Metro", "lat": 6.25, "lon": -75.56},
         {"name": "Universidad", "line": "Metro", "lat": 6.26, "lon": -75.56},
         {"name": "San Antonio", "line": "Metroplús", "lat": 6.24, "lon": -75.57},
     ]
     ordered = metro_line_a_stations(stations)
-    assert [station["name"] for station in ordered] == ["Universidad", "Prado", "Poblado"]
+    assert [station["name"] for station in ordered] == [
+        "Universidad", "Prado", "Poblado", "Aguacatala", "Ayurá",
+    ]
     assert metro_line_a_geometry(stations) == [(station["lat"], station["lon"]) for station in ordered]
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("Estación del Metro Aguacatala", "Aguacatala"),
+    ("Estación Metroplús Barrio Colombia", "Barrio Colombia"),
+    ("Estación del Metroplús Palos Verdes", "Palos Verdes"),
+])
+def test_osm_station_name_prefix_is_normalized(raw, expected):
+    from movilidad.data import _normalize_station_name
+
+    assert _normalize_station_name(raw) == expected
+
+
+def test_station_snapshot_includes_missing_nearby_stations(tmp_path, monkeypatch):
+    from movilidad import data
+
+    monkeypatch.setattr(data, "CACHE", tmp_path)
+    monkeypatch.setenv("OSM_SOURCE", "snapshot")
+    stations = data.load_metro_stations(cache_version=999)
+    names = {station["name"] for station in stations}
+    assert {"Aguacatala", "Ayurá", "Envigado", "Itagüí", "Santa Lucía"} <= names
+
+
+def test_live_station_loading_normalizes_names_and_keeps_supplement(tmp_path, monkeypatch):
+    from movilidad import data
+
+    tile = tmp_path / "stations.osm"
+    tile.write_text(
+        '<osm><node id="1" lat="6.24" lon="-75.57">'
+        '<tag k="name" v="Estación del Metro Nueva"/>'
+        '<tag k="network" v="Metro de Medellín"/>'
+        '<tag k="public_transport" v="stop_position"/>'
+        '<tag k="subway" v="yes"/></node></osm>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(data, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(data, "download_tiles", lambda: [tile])
+    monkeypatch.setenv("OSM_SOURCE", "live")
+
+    stations = data.load_metro_stations(cache_version=998)
+    by_name = {station["name"]: station for station in stations}
+    assert by_name["Nueva"]["line"] == "Metro"
+    assert by_name["Aguacatala"]["line"] == "Metro"
 
 
 def test_bike_optimizes_distance(grid_planner):

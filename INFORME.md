@@ -4,14 +4,14 @@
 
 ## 1. Problema
 
-Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tiene que elegir entre carro, bicicleta/a pie y Metro, según el tiempo, costo, emisiones y restricciones como el pico y placa. No hay información centralizada de los recorridos de bus, así que el MVP no calcula rutas de bus. Calcula rutas de carro y bicicleta/a pie sobre redes de OpenStreetMap y una alternativa multimodal de caminata + Línea A con acceso peatonal por OSM y tiempos de Metro estimados.
+Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tiene que elegir entre carro, bicicleta/a pie y Metro, según el tiempo, costo, emisiones y restricciones como el pico y placa. No hay información centralizada de los recorridos de bus, así que el MVP no calcula rutas de bus. Calcula rutas de carro y bicicleta/a pie sobre redes de OpenStreetMap y una alternativa multimodal con caminata y abordaje opcional de la Línea A.
 
 ## 2. Datos
 
 | Dato | Fuente | Tipo |
 |---|---|---|
 | Red vehicular (5.811 nodos, 12.421 arcos dirigidos) y red peatonal (19.371 nodos, 59.926 arcos) | OpenStreetMap, API 0.6, 12 recuadros del área (lon −75,600 a −75,555; lat 6,195 a 6,272), procesados con OSMnx | Observado |
-| 17 estaciones de Metro y Metroplús | OpenStreetMap (`network=Metro de Medellín`) | Observado |
+| Estaciones de Metro y Metroplús, incluidas Aguacatala, Ayurá, Envigado, Itagüí y Santa Lucía | OpenStreetMap (`network=Metro de Medellín`/Metroplús) | Observado |
 | Gasolina: $16.251/galón | Circular CREG 371/2026 (Medellín, noviembre de 2026) | Oficial |
 | Tarifas: bus $3.000, Metro $3.820 | Prensa, enero de 2026 (Publimetro, Valora Analitik) | Secundario |
 | Pico y placa 2026-2 | Alcaldía de Medellín y prensa local | Oficial y secundario |
@@ -27,7 +27,7 @@ Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tie
 
 - Para carro, la velocidad es $v = v^{base}_{c}\cdot f(h)$, con $f(h)=0{,}55$ en pico (6–8 h y 17–19 h), $0{,}8$ en horas intermedias y $1$ en el resto.
 - Tiempo $t=L/v$. Combustible $= L\cdot\text{consumo}/100$. Costo del carro = litros × precio; CO₂ = litros × factor de emisión. La bicicleta/a pie usa una velocidad informativa constante y minimiza la distancia.
-- La alternativa Metro evalúa pares de estaciones disponibles de Línea A: camina por la red peatonal hasta la estación de abordaje, estima el tramo ferroviario entre estaciones y añade la caminata final. Usa velocidad Metro 35 km/h y 5 minutos de espera supuestos; aplica la tarifa frecuente de referencia $3.820. El trazo entre estaciones es esquemático y no modela horarios ni emisiones eléctricas.
+- La alternativa Metro ejecuta A\* en un grafo combinado: conserva los tramos peatonales OSM y agrega enlaces esquemáticos entre estaciones de Línea A, con acciones de abordaje/descenso. El tren es opcional; la búsqueda puede devolver un itinerario solo a pie si tiene menor costo ponderado. Usa velocidad Metro 35 km/h y 5 minutos de espera supuestos; cobra la tarifa frecuente de referencia $3.820 al abordar. El trazo entre estaciones es esquemático y no modela horarios ni emisiones eléctricas.
 - Costo escalar $c = w_d\,\text{km} + w_t\,\text{min} + w_c\,\text{kCOP} + w_e\,(100\,\text{g CO}_2)$, con $w\ge 0$ (validado).
 
 **Heurística.** $h(n)=\alpha\cdot k_{min}\cdot d_{hav}(n,\text{meta})$, donde $k_{min}=\min_e c_e/L_e$ es el menor costo por metro de todo el grafo. Como $L_{uv}\ge d_{hav}(u,v)$, se cumple $c_{uv}\ge k_{min}L_{uv}\ge k_{min}\,[d_{hav}(u,g)-d_{hav}(v,g)]$. Por tanto $h$ es **consistente** (y admisible) para $\alpha\in[0,1]$. La interfaz limita $\alpha$ a ese rango y no ofrece variantes no admisibles. La construcción sirve para cualquier combinación de pesos, porque $k_{min}$ se recalcula cada vez que cambian los parámetros.
@@ -79,12 +79,12 @@ Usamos 14 preguntas fijas ([eval/agent_questions.json](eval/agent_questions.json
 
 ## 6. Dashboard e interacción
 
-En Streamlit, la barra lateral permite elegir origen y destino (12 lugares o coordenadas), la hora, los modos de ruta (carro, bicicleta/a pie y caminata + Metro Línea A) y tres grupos de controles explicados: (1) parámetros del entorno (velocidades, congestión, consumo y tarifas), (2) pesos de preferencias y (3) algoritmo e intensidad de la heurística. Cualquier cambio recalcula los costos y vuelve a ejecutar la búsqueda. La pestaña **Rutas** muestra dos mapas Folium (ruta ganadora por puntaje de preferencias y todas las rutas), estaciones y trazo esquemático de Línea A, tabla y gráfico comparativo, A\* frente a Dijkstra y BFS para los modos con red vial, y detalle por tramo. **Hora del día** compara carro y bicicleta/a pie para las 24 horas; la alternativa Metro queda constante porque no se modelan horarios.
+En Streamlit, la barra lateral permite elegir origen y destino (12 lugares o coordenadas), la hora, los modos de ruta (carro, bicicleta/a pie y caminata con Metro opcional) y tres grupos de controles explicados: (1) parámetros del entorno (velocidades, congestión, consumo y tarifas), (2) pesos de preferencias y (3) algoritmo e intensidad de la heurística. Cualquier cambio recalcula los costos y vuelve a ejecutar la búsqueda. La pestaña **Rutas** muestra dos mapas Folium (ruta ganadora por puntaje de preferencias y todas las rutas), estaciones y trazo esquemático de Línea A, tabla y gráfico comparativo, A\* frente a Dijkstra y BFS para los modos con red vial, y detalle por tramo. **Hora del día** compara carro y bicicleta/a pie para las 24 horas; la alternativa Metro queda constante porque no se modelan horarios.
 
 ## 7. Limitaciones y uso responsable
 
 - **Sin tráfico real.** La congestión es un factor horario supuesto. Los tiempos sirven para comparar alternativas, no como predicción.
-- No se calculan rutas de bus porque no hay una fuente centralizada de recorridos. La alternativa Metro se limita a la Línea A y estaciones presentes en el área; su geometría es esquemática, no incluye horarios, transbordos ni otras líneas. La bicicleta/a pie usa la red peatonal de OSM y no considera ciclorrutas ni pendientes.
+- No se calculan rutas de bus porque no hay una fuente centralizada de recorridos. La alternativa Metro se limita a la Línea A y estaciones conectadas con la red peatonal; abordar es opcional y la geometría del tren es esquemática. No incluye horarios, transbordos ni otras líneas. La bicicleta/a pie usa la red peatonal de OSM y no considera ciclorrutas ni pendientes.
 - Factores de emisión y consumos aproximados. Deberían calibrarse con FECOC (UPME) y con datos de flota.
 - El corpus resume fuentes de prensa y oficiales a noviembre de 2026. Algunas cifras difieren entre fuentes (por ejemplo, la multa) y el agente está instruido para decirlo. `check_pico_y_placa` no conoce los festivos.
 - Las métricas del agente dependen del modelo LLM y del proveedor. Con la capa gratuita puede haber límites de uso.

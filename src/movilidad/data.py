@@ -53,7 +53,7 @@ PLACES = {
 
 METRO_LINE_A_ORDER = (
     "Universidad", "Hospital", "Prado", "Parque Berrío", "San Antonio",
-    "Alpujarra", "Exposiciones", "Industriales", "Poblado",
+    "Alpujarra", "Exposiciones", "Industriales", "Poblado", "Aguacatala", "Ayurá", "Envigado", "Itagüí",
 )
 
 
@@ -69,6 +69,17 @@ def metro_line_a_stations(stations: list[dict]) -> list[dict]:
 def metro_line_a_geometry(stations: list[dict]) -> list[tuple[float, float]]:
     """Trazo esquemático de Línea A enlazando los centros de estación disponibles."""
     return [(station["lat"], station["lon"]) for station in metro_line_a_stations(stations)]
+
+
+def _normalize_station_name(name: str) -> str:
+    """Quita prefijos de OSM como 'Estación del Metro' sin descartar la estación."""
+    normalized = name.strip()
+    if normalized.casefold().startswith("estación "):
+        normalized = normalized[len("estación "):].strip()
+    for prefix in ("del metroplús ", "del metroplus ", "del metro ", "metroplús ", "metroplus ", "metro "):
+        if normalized.casefold().startswith(prefix):
+            return normalized[len(prefix):].strip()
+    return normalized
 
 
 # Filtros equivalentes a los tipos de red de OSMnx (osmnx/_overpass.py).
@@ -255,33 +266,37 @@ def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
     return from_networkx(G, network_type)
 
 
-def load_metro_stations() -> list[dict]:
-    """Estaciones del sistema Metro (metro, tranvía, cable, Metroplús) dentro del BBOX.
+def load_metro_stations(cache_version: int = 2) -> list[dict]:
+    """Estaciones Metro y Metroplús disponibles, uniendo OSM en vivo con el respaldo versionado.
 
     En OSM las estaciones de Medellín se modelan como nodos `public_transport=stop_position|station`
     con `network=Metro de Medellín` (o Metroplús); se agrupan por nombre y se promedian coordenadas.
     """
-    snapshot = CACHE / "metro_stations.json"
+    snapshot = CACHE / f"metro_stations_v{cache_version}.json"
     if snapshot.exists():
         cached = json.loads(snapshot.read_text(encoding="utf-8"))
         if cached:
             return cached
     left, bottom, right, top = BBOX
     groups: dict = {}
+    fallback = json.loads((DATA_DIR / "metro_stations.json").read_text(encoding="utf-8"))
     try:
         if os.getenv("OSM_SOURCE", "live").lower() == "snapshot":
             raise DataAccessError("OSM_SOURCE=snapshot")
         tiles = download_tiles()
     except DataAccessError:
-        return json.loads((DATA_DIR / "metro_stations.json").read_text(encoding="utf-8"))
+        return fallback
     for p in tiles:
         for el in ET.parse(p).getroot().iter("node"):
             tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
             network = tags.get("network", "")
-            name = tags.get("name")
-            if not name or "metro" not in network.lower() or name.lower().startswith("estación"):
+            raw_name = tags.get("name")
+            if not raw_name or "metro" not in network.lower():
                 continue
             if tags.get("public_transport") not in ("stop_position", "station", "platform") and                     tags.get("railway") not in ("station", "halt", "tram_stop"):
+                continue
+            name = _normalize_station_name(raw_name)
+            if not name:
                 continue
             lat, lon = float(el.get("lat")), float(el.get("lon"))
             if not (bottom <= lat <= top and left <= lon <= right):
@@ -298,8 +313,17 @@ def load_metro_stations() -> list[dict]:
             g = groups.setdefault(key, {"lat": [], "lon": []})
             g["lat"].append(lat)
             g["lon"].append(lon)
-    stations = [{"name": n, "line": k, "lat": sum(g["lat"]) / len(g["lat"]), "lon": sum(g["lon"]) / len(g["lon"])}
-                for (n, k), g in sorted(groups.items())]
+    stations_by_key = {
+        (station["name"], station["line"]): station for station in fallback
+    }
+    stations_by_key.update({
+        (name, line): {
+            "name": name, "line": line, "lat": sum(group["lat"]) / len(group["lat"]),
+            "lon": sum(group["lon"]) / len(group["lon"]),
+        }
+        for (name, line), group in groups.items()
+    })
+    stations = sorted(stations_by_key.values(), key=lambda station: (station["name"], station["line"]))
     CACHE.mkdir(parents=True, exist_ok=True)
     snapshot.write_text(json.dumps(stations, ensure_ascii=False, indent=1), encoding="utf-8")
     return stations

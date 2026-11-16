@@ -1,9 +1,21 @@
 [
  {
+  "name": "Aguacatala",
+  "line": "Metro",
+  "lat": 6.1938324,
+  "lon": -75.58184255
+ },
+ {
   "name": "Alpujarra",
   "line": "Metro",
   "lat": 6.2429407,
   "lon": -75.57140285
+ },
+ {
+  "name": "Ayurá",
+  "line": "Metro",
+  "lat": 6.18604985,
+  "lon": -75.58619735
  },
  {
   "name": "Barrio Colombia",
@@ -22,6 +34,12 @@
   "line": "Metro",
   "lat": 6.25332705,
   "lon": -75.5882344
+ },
+ {
+  "name": "Envigado",
+  "line": "Metro",
+  "lat": 6.17469685,
+  "lon": -75.59704095
  },
  {
   "name": "Exposiciones",
@@ -52,6 +70,12 @@
   "line": "Metro",
   "lat": 6.23002265,
   "lon": -75.57563329999999
+ },
+ {
+  "name": "Itagüí",
+  "line": "Metro",
+  "lat": 6.1629579,
+  "lon": -75.6067143
  },
  {
   "name": "Palos Verdes",
@@ -88,6 +112,12 @@
   "line": "Metro",
   "lat": 6.247079725,
   "lon": -75.56963892499999
+ },
+ {
+  "name": "Santa Lucía",
+  "line": "Metro",
+  "lat": 6.2580267,
+  "lon": -75.603808
  },
  {
   "name": "Suramericana",

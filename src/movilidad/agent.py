@@ -49,8 +49,8 @@ OPTIMIZE_PRESETS = {
 TOOLS = [
     {"type": "function", "function": {
         "name": "plan_route",
-        "description": "Calcula con A* la mejor ruta en carro o bicicleta/a pie sobre OSM, o una alternativa multimodal a pie + "
-                       "Metro Línea A, entre dos lugares del área Centro–Laureles–El Poblado de Medellín. Devuelve métricas e itinerario.",
+        "description": "Calcula con A* la mejor ruta en carro o bicicleta/a pie sobre OSM, o una ruta multimodal con caminata "
+                       "y Metro Línea A opcional; puede elegir caminar todo el trayecto. Devuelve métricas e itinerario.",
         "parameters": {"type": "object", "properties": {
             "origin": {"type": "string", "description": f"Lugar predefinido ({', '.join(PLACES)}) o 'lat, lon'"},
             "destination": {"type": "string", "description": "Lugar predefinido o 'lat, lon'"},
@@ -61,7 +61,7 @@ TOOLS = [
         }, "required": ["origin", "destination", "mode"]}}},
     {"type": "function", "function": {
         "name": "compare_modes",
-        "description": "Compara carro, bicicleta/a pie y caminata + Metro Línea A entre dos lugares: distancia, tiempo, costo y CO2.",
+        "description": "Compara carro, bicicleta/a pie y una ruta con Metro Línea A opcional: distancia, tiempo, costo y CO2.",
         "parameters": {"type": "object", "properties": {
             "origin": {"type": "string"}, "destination": {"type": "string"},
             "hour": {"type": "integer", "description": "Hora local de salida 0-23"},
@@ -92,15 +92,17 @@ def system_prompt(today: dt.date, hour: int) -> str:
     return f"""Eres el Copiloto de Movilidad del Valle de Aburrá (proyecto académico SI3003, EAFIT).
 Hoy es {today.isoformat()} ({pico_placa.DAY_NAMES[today.weekday()]}); la hora de salida seleccionada en el dashboard es {hour}:00.
 Reglas:
-1. Para rutas de carro, bicicleta/a pie o caminata + Metro Línea A, tiempos, costos o emisiones usa plan_route o compare_modes;
-   nunca inventes cifras. El itinerario Metro es esquemático y no usa horarios oficiales.
+1. Para rutas de carro, bicicleta/a pie o caminata con Metro Línea A opcional, tiempos, costos o emisiones usa plan_route o
+   compare_modes; nunca inventes cifras. A* puede escoger caminar todo el trayecto. El itinerario Metro es esquemático y no usa
+   horarios oficiales.
 2. No calcules ni inventes rutas de bus: el sistema no tiene información centralizada de sus recorridos. Puedes consultar
    tarifas de bus en search_docs si preguntan por ellas.
 3. Para normas, tarifas, horarios del Metro, EnCicla o supuestos del modelo usa search_docs y cita cada dato con la cita
    exacta que devuelve la herramienta, con el formato [archivo.md § sección].
 4. Para saber si un vehículo puede circular usa check_pico_y_placa (y cita pico_y_placa_2026_2.md).
 5. Cuando cites cifras de rutas, indica que provienen del cálculo A* sobre OpenStreetMap con velocidades estimadas (no tráfico real).
-   En la alternativa Metro, aclara que solo se dibuja esquemáticamente la Línea A disponible en el área y la espera/velocidad son supuestos.
+   En la alternativa Metro, aclara que abordar es opcional, que la Línea A disponible se dibuja esquemáticamente y que la
+   espera/velocidad son supuestos.
 6. Puedes encadenar varias herramientas. Si una herramienta devuelve un error, explícalo o corrige los argumentos.
 7. Si la información no está en el corpus ni en las herramientas, dilo. No des consejo legal ni de seguridad.
 Responde en español, de forma breve y clara."""

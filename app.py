@@ -28,7 +28,7 @@ from movilidad.rag import DocIndex  # noqa: E402
 
 st.set_page_config(page_title="Copiloto de Movilidad – Valle de Aburrá", page_icon="🚦", layout="wide")
 MODE_COLORS = {"carro": "#c0392b", "bicicleta": "#1e8449", "metro": "#7d3c98"}
-MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie", "metro": "A pie + Metro (Línea A)"}
+MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie", "metro": "A pie + Metro opcional (Línea A)"}
 CUSTOM = "📍 Coordenadas personalizadas"
 
 
@@ -47,9 +47,9 @@ def get_index() -> DocIndex:
 
 
 @st.cache_data(show_spinner=False)
-def get_stations():
+def get_stations(cache_version: int = 2):
     try:
-        return load_metro_stations()
+        return load_metro_stations(cache_version=cache_version)
     except DataAccessError:
         return []
 
@@ -57,7 +57,7 @@ def get_stations():
 def build_route_map(shown_plans):
     fmap = folium.Map(location=[(BBOX[1] + BBOX[3]) / 2, (BBOX[0] + BBOX[2]) / 2], zoom_start=13,
                       tiles="OpenStreetMap")
-    stations_data = get_stations()
+    stations_data = get_stations(2)
     line_a = metro_line_a_geometry(stations_data)
     if len(line_a) > 1:
         folium.PolyLine(
@@ -79,7 +79,7 @@ def build_route_map(shown_plans):
             if len(leg["geometry"]) < 2:
                 continue
             leg_mode = leg["mode"]
-            color = "#1e8449" if leg_mode == "a pie" else MODE_COLORS[leg_mode]
+            color = "#5b5fc7" if leg_mode == "a pie" else MODE_COLORS[leg_mode]
             folium.PolyLine(
                 leg["geometry"], color=color, weight=7 if leg_mode == "metro" else 5, opacity=0.9,
                 tooltip=f"{MODE_LABELS[mode]} · {leg['description']} ({leg['time_min']:.1f} min)",
@@ -209,34 +209,32 @@ with tab_routes:
                      "Puntaje de preferencias": round(p.selection_cost, 3),
                      "Nodos expandidos": p.expanded, "Búsqueda (ms)": round(p.runtime_ms, 1),
                      "Nota": p.message if p.found else f"⚠️ {p.message}"})
-    col_map, col_tab = st.columns([3, 2])
-    with col_map:
-        winner_tab, all_routes_tab = st.tabs(["🏆 Ruta ganadora", "🌐 Todas las rutas"])
-        with winner_tab:
-            if winner:
-                st.caption(f"Menor puntaje con las preferencias actuales: {MODE_LABELS[winner.mode]}.")
-                st_folium(build_route_map({winner.mode: winner}), height=520, use_container_width=True,
-                          returned_objects=[], key="winner_route_map")
-            else:
-                st.info("No se encontró una ruta ganadora para los modos seleccionados.")
-        with all_routes_tab:
-            st_folium(build_route_map(found_plans), height=520, use_container_width=True,
-                      returned_objects=[], key="all_route_map")
-        st.caption("Rojo: carro · Verde: bicicleta / a pie · Morado: estaciones de Metro. "
-                   "La Línea A se dibuja esquemáticamente entre estaciones; sus tramos no son geometría ferroviaria oficial.")
-    with col_tab:
-        st.subheader("Comparación de modos")
-        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-        found = [r for r in rows if r["Tiempo (min)"] > 0]
-        if found:
-            long = pd.DataFrame(found).melt(id_vars="Modo", value_vars=["Tiempo (min)", "Costo (COP)", "CO₂ (kg)"])
-            chart = alt.Chart(long).mark_bar().encode(
-                x=alt.X("value:Q", title=None), y=alt.Y("Modo:N", title=None),
-                color=alt.Color("Modo:N", scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
-                                legend=None),
-                tooltip=["Modo", "variable", "value"],
-            ).properties(height=80).facet(row=alt.Row("variable:N", title=None)).resolve_scale(x="independent")
-            st.altair_chart(chart, width="stretch")
+    winner_tab, all_routes_tab = st.tabs(["🏆 Ruta ganadora", "🌐 Todas las rutas"])
+    with winner_tab:
+        if winner:
+            st.caption(f"Menor puntaje con las preferencias actuales: {MODE_LABELS[winner.mode]}.")
+            st_folium(build_route_map({winner.mode: winner}), height=520, use_container_width=True,
+                      returned_objects=[], key="winner_route_map")
+        else:
+            st.info("No se encontró una ruta ganadora para los modos seleccionados.")
+    with all_routes_tab:
+        st_folium(build_route_map(found_plans), height=520, use_container_width=True,
+                  returned_objects=[], key="all_route_map")
+    st.caption("Rojo: carro · Verde: bicicleta · Azul-violeta: caminatas de la alternativa Metro · Morado: estaciones. "
+               "La Línea A se dibuja esquemáticamente entre estaciones; sus tramos no son geometría ferroviaria oficial.")
+
+    st.subheader("Comparación de modos")
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    found = [r for r in rows if r["Tiempo (min)"] > 0]
+    if found:
+        long = pd.DataFrame(found).melt(id_vars="Modo", value_vars=["Tiempo (min)", "Costo (COP)", "CO₂ (kg)"])
+        chart = alt.Chart(long).mark_bar().encode(
+            x=alt.X("value:Q", title=None), y=alt.Y("Modo:N", title=None),
+            color=alt.Color("Modo:N", scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
+                            legend=None),
+            tooltip=["Modo", "variable", "value"],
+        ).properties(height=80).facet(row=alt.Row("variable:N", title=None)).resolve_scale(x="independent")
+        st.altair_chart(chart, width="stretch")
 
     st.subheader("A* frente a Dijkstra para esta consulta")
     comp = []
@@ -247,7 +245,7 @@ with tab_routes:
                          "Costo ponderado": round(p.weighted_cost, 4), "Tiempo (min)": round(p.time_min, 1)})
     st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
     if "metro" in modes:
-        st.caption("La alternativa a pie + Metro compara estaciones y estima tiempo; no corresponde a una búsqueda A* en las vías férreas.")
+        st.caption("La alternativa Metro usa A* sobre la red peatonal y la Línea A esquemática; abordar es opcional y depende del costo ponderado.")
 
     st.subheader("Detalle por tramo")
     found_modes = [m for m, p in plans.items() if p.found]

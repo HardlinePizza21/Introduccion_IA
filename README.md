@@ -78,8 +78,8 @@ DECLARACION_IA.md           Declaración de uso de IA generativa
 
 | Herramienta | Qué hace |
 |---|---|
-| `plan_route(origin, destination, mode, hour, optimize)` | A\* para carro o bicicleta/a pie; alternativa multimodal caminata + Línea A para Metro |
-| `compare_modes(origin, destination, hour)` | Compara carro, bicicleta/a pie y caminata + Metro Línea A |
+| `plan_route(origin, destination, mode, hour, optimize)` | A\* para carro y bicicleta/a pie; A\* multimodal con caminata y abordaje opcional de la Línea A |
+| `compare_modes(origin, destination, hour)` | Compara carro, bicicleta/a pie y una ruta multimodal que puede usar o no el Metro |
 | `search_docs(query)` | Recupera los 4 fragmentos más similares del corpus, con su cita `[archivo § sección]` |
 | `check_pico_y_placa(plate, date, hour, vehicle, fuel)` | Aplica la rotación 2026-2 de forma determinística |
 | `nearest_metro_station(place)` | Estación de Metro/Metroplús más cercana según OSM |
@@ -88,7 +88,7 @@ Los errores de las herramientas (lugar desconocido, fuera del área, argumentos 
 
 ## 7. Fuentes de datos
 
-- **Red vial y estaciones:** © colaboradores de OpenStreetMap, licencia ODbL, mediante la API 0.6 (`api.openstreetmap.org`), procesada con OSMnx. Se usa la API principal porque los servidores Overpass respondían 502 por saturación durante el desarrollo. El volumen descargado es pequeño (12 recuadros, una sola vez) y queda en caché.
+- **Red vial y estaciones:** © colaboradores de OpenStreetMap, licencia ODbL, mediante la API 0.6 (`api.openstreetmap.org`), procesada con OSMnx. La capa de estaciones también incluye el respaldo versionado para paradas cercanas al borde del área, como Aguacatala, Ayurá y Envigado; se normalizan nombres OSM como «Estación del Metro Aguacatala».
 - **Precio de la gasolina:** Circular CREG 371 de 2026: $16.251 por galón en Medellín (noviembre de 2026).
 - **Tarifas 2026 (referencia documental):** Publimetro y Valora Analitik (enero de 2026): Metro $3.820 (frecuente), bus urbano $3.000. La tarifa Metro frecuente se usa como referencia ajustable en la alternativa multimodal; la tarifa de bus no se usa.
 - **Pico y placa 2026-2:** Alcaldía de Medellín, El Colombiano y Telemedellín.
@@ -99,7 +99,7 @@ Las URL completas están en cada documento de [corpus/](corpus/).
 ## 8. Limitaciones
 
 - No hay tráfico real: la hora de salida solo cambia un factor de congestión supuesto.
-- No se calculan rutas de bus por falta de una fuente centralizada de recorridos. La alternativa Metro solo combina caminata por OSM con estaciones de Línea A presentes en el área; une sus centros con un trazo esquemático, sin geometría ferroviaria oficial, horarios, transbordos ni otras líneas. Velocidad y espera son supuestos.
+- No se calculan rutas de bus por falta de una fuente centralizada de recorridos. La capa Metro incluye estaciones cercanas al borde del área; las caminatas siguen limitadas por la cobertura de la red peatonal descargada. A\* busca sobre la red peatonal con enlaces esquemáticos entre estaciones de Línea A y solo aborda si reduce el costo ponderado. No hay geometría ferroviaria oficial, horarios, transbordos ni otras líneas; velocidad y espera son supuestos.
 - La opción bicicleta/a pie usa la red peatonal de OSM, sin ciclorrutas ni pendientes. Su velocidad es una estimación de bicicleta; no representa un perfil peatonal independiente. En una ciudad de ladera como Medellín, la pendiente importa.
 - El área cubierta es Centro, Laureles y El Poblado (aproximadamente 5 × 8,5 km). Puntos a más de 400 m de la red se rechazan.
 - El corpus es un resumen hecho por el equipo a partir de fuentes de prensa y oficiales. Puede quedar desactualizado y no reemplaza la norma.

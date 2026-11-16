@@ -192,106 +192,185 @@ class Planner:
                 or env.metro_boarding_min < 0 or env.metro_fare_cop < 0):
             raise ValueError("Las velocidades deben ser positivas; espera y tarifa no pueden ser negativas.")
         plan = RoutePlan("metro", hour, origin, destination, False, algorithm=algo.algorithm)
+        graph = self.graph("bicicleta")
+        origin_node, origin_snap = graph.nearest_node(origin)
+        destination_node, destination_snap = graph.nearest_node(destination)
+        plan.snap_m = (origin_snap, destination_snap)
+        if max(plan.snap_m) > MAX_SNAP_M:
+            plan.message = "Origen o destino fuera del área cubierta por la red peatonal descargada."
+            return plan
+
+        road_nodes = {node: ("road", node) for node in graph.coords}
+        start, goal = road_nodes[origin_node], road_nodes[destination_node]
+        adjacency = {state: [] for state in road_nodes.values()}
+        coords = {road_nodes[node]: point for node, point in graph.coords.items()}
+        transitions = []
+        min_cost_per_meter = math.inf
+
+        def add_transition(source, target, kind, mode, metrics, geometry, description, via, road_class):
+            nonlocal min_cost_per_meter
+            edge_cost = weighted_cost(metrics, weights)
+            edge_id = len(transitions)
+            transitions.append({
+                "kind": kind, "mode": mode, "metrics": metrics, "geometry": geometry,
+                "description": description, "via": via, "road_class": road_class,
+            })
+            adjacency.setdefault(source, []).append((target, edge_cost, edge_id))
+            if metrics.length_m > 0:
+                min_cost_per_meter = min(min_cost_per_meter, edge_cost / metrics.length_m)
+
+        walk_provenance = f"red peatonal OSM; velocidad supuesta {env.walk_speed_kmh:.1f} km/h"
+        for edge in graph.edges:
+            metrics = EdgeMetrics(
+                edge.length_m, env.walk_speed_kmh, edge.length_m / (env.walk_speed_kmh / 3.6),
+                0.0, 0.0, walk_provenance,
+            )
+            add_transition(
+                road_nodes[edge.u], road_nodes[edge.v], "walk", "a pie", metrics,
+                edge.geometry or [graph.coords[edge.u], graph.coords[edge.v]],
+                "Caminata por red peatonal OSM", edge.name or "(sin nombre)", edge.road_class,
+            )
+
         stations = self._stations
         if stations is None:
             stations = load_metro_stations()
             self._stations = stations
-        stations = metro_line_a_stations(stations)
-        if len(stations) < 2:
-            plan.message = "No hay suficientes estaciones de Línea A para calcular un tramo en Metro."
-            return plan
-
-        walking_to = [
-            self.plan(origin, (station["lat"], station["lon"]), "bicicleta", hour, env, weights, algo)
-            for station in stations
-        ]
-        walking_from = [
-            self.plan((station["lat"], station["lon"]), destination, "bicicleta", hour, env, weights, algo)
-            for station in stations
-        ]
-        best = None
-        for start, access in enumerate(walking_to):
-            if not access.found:
+        connected_stations = []
+        for station in metro_line_a_stations(stations):
+            station_xy = (station["lat"], station["lon"])
+            road_node, snap_m = graph.nearest_node(station_xy)
+            if snap_m > MAX_SNAP_M:
                 continue
-            for end, egress in enumerate(walking_from):
-                if start == end or not egress.found:
-                    continue
-                step = 1 if end > start else -1
-                indices = range(start, end + step, step)
-                ride_geometry = [(stations[i]["lat"], stations[i]["lon"]) for i in indices]
-                ride_distance_m = sum(
-                    haversine_m(a, b) for a, b in zip(ride_geometry, ride_geometry[1:])
-                )
-                ride_time_s = ride_distance_m / (env.metro_speed_kmh / 3.6) + env.metro_boarding_min * 60
-                ride = EdgeMetrics(
-                    ride_distance_m, env.metro_speed_kmh, ride_time_s, env.metro_fare_cop, 0.0,
-                    "tarifa frecuente 2026; velocidad y espera de abordaje son supuestos",
-                )
-                access_time_s = access.distance_km * 1000 / (env.walk_speed_kmh / 3.6)
-                egress_time_s = egress.distance_km * 1000 / (env.walk_speed_kmh / 3.6)
-                access_metrics = EdgeMetrics(
-                    access.distance_km * 1000, env.walk_speed_kmh, access_time_s, 0.0, 0.0,
-                    "caminata por red peatonal OSM; velocidad supuesta",
-                )
-                egress_metrics = EdgeMetrics(
-                    egress.distance_km * 1000, env.walk_speed_kmh, egress_time_s, 0.0, 0.0,
-                    "caminata por red peatonal OSM; velocidad supuesta",
-                )
-                score = sum(weighted_cost(metrics, weights) for metrics in (access_metrics, ride, egress_metrics))
-                if best is None or score < best[0]:
-                    best = (score, start, end, access, egress, ride, ride_geometry)
+            connected_stations.append((station, station_xy, road_node, snap_m))
 
-        if best is None:
-            plan.message = "No se encontró una combinación de caminata y estaciones de Línea A conectadas por la red."
+        for index, (station, station_xy, road_node, snap_m) in enumerate(connected_stations):
+            platform = ("platform", index)
+            onboard = ("train", index)
+            coords[platform] = station_xy
+            coords[onboard] = station_xy
+            adjacency[platform] = []
+            adjacency[onboard] = []
+            access_metrics = EdgeMetrics(
+                snap_m, env.walk_speed_kmh, snap_m / (env.walk_speed_kmh / 3.6), 0.0, 0.0,
+                f"aproximación peatonal al nodo OSM más cercano; {walk_provenance}",
+            )
+            connector_geometry = [graph.coords[road_node], station_xy]
+            add_transition(
+                road_nodes[road_node], platform, "walk", "a pie", access_metrics, connector_geometry,
+                f"Caminata hasta {station['name']}", f"Acceso a {station['name']}", "acceso a estación",
+            )
+            add_transition(
+                platform, road_nodes[road_node], "walk", "a pie", access_metrics,
+                connector_geometry[::-1], f"Caminata desde {station['name']}",
+                f"Salida de {station['name']}", "acceso a estación",
+            )
+            board = EdgeMetrics(
+                0.0, 0.0, env.metro_boarding_min * 60, env.metro_fare_cop, 0.0,
+                "tarifa frecuente 2026 y espera de abordaje supuesta",
+            )
+            add_transition(
+                platform, onboard, "board", "metro", board, [],
+                f"Abordaje en {station['name']}", f"Abordaje en {station['name']}", "Metro Línea A",
+            )
+            alight = EdgeMetrics(0.0, 0.0, 0.0, 0.0, 0.0, "descenso del tren")
+            add_transition(
+                onboard, platform, "alight", "metro", alight, [],
+                f"Descenso en {station['name']}", f"Descenso en {station['name']}", "Metro Línea A",
+            )
+
+        for index, (first, second) in enumerate(zip(connected_stations, connected_stations[1:])):
+            first_station, first_xy = first[0], first[1]
+            second_station, second_xy = second[0], second[1]
+            distance_m = haversine_m(first_xy, second_xy)
+            ride = EdgeMetrics(
+                distance_m, env.metro_speed_kmh, distance_m / (env.metro_speed_kmh / 3.6),
+                0.0, 0.0, "trazo esquemático; velocidad supuesta",
+            )
+            for source, target, a, b in (
+                (("train", index), ("train", index + 1), first_station, second_station),
+                (("train", index + 1), ("train", index), second_station, first_station),
+            ):
+                description = f"Línea A: {a['name']} → {b['name']}"
+                add_transition(
+                    source, target, "ride", "metro", ride, [(a["lat"], a["lon"]), (b["lat"], b["lon"])],
+                    description, description, "Metro Línea A",
+                )
+
+        algo = algo.clamp()
+        heuristic = make_heuristic(
+            coords, goal, 0.0 if math.isinf(min_cost_per_meter) else min_cost_per_meter,
+            algo.heuristic_weight,
+        )
+        if algo.algorithm == "astar":
+            result = astar(adjacency, start, goal, heuristic)
+        elif algo.algorithm == "dijkstra":
+            result = dijkstra(adjacency, start, goal)
+        elif algo.algorithm == "bfs":
+            result = bfs(adjacency, start, goal)
+        else:
+            raise ValueError(f"Algoritmo desconocido: {algo.algorithm}")
+        plan.expanded, plan.runtime_ms = result.expanded, result.runtime_ms
+        if not result.found:
+            plan.message = "No se encontró una ruta peatonal ni una combinación con la Línea A."
             return plan
 
-        score, start, end, access, egress, ride, ride_geometry = best
-        access_leg = {
-            "mode": "a pie", "geometry": access.geometry, "distance_km": access.distance_km,
-            "time_min": access.distance_km * 60 / env.walk_speed_kmh,
-            "description": f"Caminata hasta {stations[start]['name']}",
-        }
-        metro_leg = {
-            "mode": "metro", "geometry": ride_geometry, "distance_km": ride.length_m / 1000,
-            "time_min": ride.time_s / 60,
-            "description": f"Línea A: {stations[start]['name']} → {stations[end]['name']}",
-        }
-        egress_leg = {
-            "mode": "a pie", "geometry": egress.geometry, "distance_km": egress.distance_km,
-            "time_min": egress.distance_km * 60 / env.walk_speed_kmh,
-            "description": f"Caminata desde {stations[end]['name']}",
-        }
-        plan.legs = [access_leg, metro_leg, egress_leg]
-        for leg in plan.legs:
-            plan.distance_km += leg["distance_km"]
-            plan.time_min += leg["time_min"]
-            plan.geometry.extend(leg["geometry"] if not plan.geometry else leg["geometry"][1:])
-        plan.cost_cop = env.metro_fare_cop
-        plan.weighted_cost = score
-        plan.selection_cost = score
-        plan.expanded = access.expanded + egress.expanded
-        plan.runtime_ms = access.runtime_ms + egress.runtime_ms
-        plan.snap_m = (access.snap_m[0], egress.snap_m[1])
-        def walking_segments(route):
-            return [{
-                **segment,
-                "modo_tramo": "a pie",
-                "velocidad_kmh": round(env.walk_speed_kmh, 1),
-                "tiempo_s": round(segment["longitud_m"] / (env.walk_speed_kmh / 3.6), 1),
-                "procedencia": f"velocidad al caminar supuesta: {env.walk_speed_kmh:.1f} km/h; red peatonal OSM",
-            } for segment in route.segments]
-
-        plan.segments = walking_segments(access) + [{
-            "via": metro_leg["description"], "clase": "Metro Línea A",
-            "longitud_m": round(ride.length_m, 1), "velocidad_kmh": round(ride.speed_kmh, 1),
-            "tiempo_s": round(ride.time_s, 1), "procedencia": ride.provenance,
-            "modo_tramo": "metro", "costo_cop": round(ride.money_cop),
-        }] + walking_segments(egress)
         plan.found = True
-        plan.message = (
-            "Itinerario multimodal: caminata por red peatonal OSM + Línea A esquemática + caminata. "
-            "Tiempo de Metro y espera estimados; tarifa frecuente 2026; emisiones de escape = 0."
-        )
+        plan.weighted_cost = result.cost
+        plan.selection_cost = result.cost
+        for edge_id in result.edges:
+            transition = transitions[edge_id]
+            metrics = transition["metrics"]
+            plan.distance_km += metrics.length_m / 1000
+            plan.time_min += metrics.time_s / 60
+            plan.cost_cop += metrics.money_cop
+            plan.co2_kg += metrics.co2_kg
+
+            if transition["kind"] == "alight":
+                continue
+            if plan.legs and plan.legs[-1]["mode"] == transition["mode"]:
+                leg = plan.legs[-1]
+            else:
+                leg = {
+                    "mode": transition["mode"], "geometry": [], "distance_km": 0.0,
+                    "time_min": 0.0, "cost_cop": 0.0, "description": "",
+                }
+                plan.legs.append(leg)
+            leg_geometry = transition["geometry"]
+            if leg_geometry:
+                if leg["geometry"] and leg["geometry"][-1] == leg_geometry[0]:
+                    leg["geometry"].extend(leg_geometry[1:])
+                else:
+                    leg["geometry"].extend(leg_geometry)
+            leg["distance_km"] += metrics.length_m / 1000
+            leg["time_min"] += metrics.time_s / 60
+            leg["cost_cop"] += metrics.money_cop
+            if transition["description"] and transition["mode"] == "metro":
+                leg["description"] = "; ".join(filter(None, (leg["description"], transition["description"])))
+            elif transition["mode"] == "a pie":
+                leg["description"] = "Caminata por red peatonal OSM"
+
+            plan.segments.append({
+                "via": transition["via"], "clase": transition["road_class"],
+                "longitud_m": round(metrics.length_m, 1), "velocidad_kmh": round(metrics.speed_kmh, 1),
+                "tiempo_s": round(metrics.time_s, 1), "procedencia": metrics.provenance,
+                "modo_tramo": transition["mode"], "costo_cop": round(metrics.money_cop),
+            })
+        for leg in plan.legs:
+            if leg["geometry"]:
+                if plan.geometry and plan.geometry[-1] == leg["geometry"][0]:
+                    plan.geometry.extend(leg["geometry"][1:])
+                else:
+                    plan.geometry.extend(leg["geometry"])
+        rode_metro = any(leg["mode"] == "metro" for leg in plan.legs)
+        if rode_metro:
+            plan.message = (
+                "Ruta multimodal calculada con A*: caminar y abordar la Línea A son opciones. "
+                "Velocidad, espera y trazo del Metro son estimados."
+            )
+        else:
+            plan.message = (
+                "A* encontró que caminar es la opción de menor costo; no es necesario abordar el Metro."
+            )
         return plan
 
     def compare(self, origin, destination, hour: int = 8, env=None, weights=None, algo=None) -> list[RoutePlan]:
