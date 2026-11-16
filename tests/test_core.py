@@ -150,6 +150,34 @@ def test_metro_route_combines_walking_and_line_a(grid_planner):
     assert p.selection_cost == pytest.approx(p.time_min)
 
 
+def test_metro_route_uses_line_b_to_san_javier():
+    stations = [
+        {"name": "San Antonio", "line": "Metro", "lat": 6.205, "lon": -75.575},
+        {"name": "San Javier", "line": "Metro", "lat": 6.210, "lon": -75.570},
+    ]
+    planner = Planner({"drive": grid_graph(), "walk": grid_graph(seed=1)}, stations=stations)
+    p = planner.plan(
+        (6.205, -75.575), (6.210, -75.570), "metro",
+        env=EnvParams(metro_boarding_min=0, metro_fare_cop=0), weights=Weights(time=1),
+    )
+    assert p.found
+    assert any(segment["modo_tramo"] == "metro" and "Línea B:" in segment["via"] for segment in p.segments)
+
+
+def test_metro_route_uses_tranvia_line_t():
+    stations = [
+        {"name": "San Antonio", "line": "Tranvía", "lat": 6.205, "lon": -75.575},
+        {"name": "Oriente", "line": "Tranvía", "lat": 6.210, "lon": -75.570},
+    ]
+    planner = Planner({"drive": grid_graph(), "walk": grid_graph(seed=1)}, stations=stations)
+    p = planner.plan(
+        (6.205, -75.575), (6.210, -75.570), "metro",
+        env=EnvParams(metro_boarding_min=0, metro_fare_cop=0), weights=Weights(time=1),
+    )
+    assert p.found
+    assert any(segment["modo_tramo"] == "metro" and "Tranvía Línea T:" in segment["via"] for segment in p.segments)
+
+
 def test_metro_route_can_choose_walking_without_boarding(grid_planner):
     p = grid_planner.plan(
         (6.200, -75.580), (6.211, -75.569), "metro",
@@ -207,6 +235,7 @@ def test_metro_line_a_uses_station_order():
     ("Estación del Metro Aguacatala", "Aguacatala"),
     ("Estación Metroplús Barrio Colombia", "Barrio Colombia"),
     ("Estación del Metroplús Palos Verdes", "Palos Verdes"),
+    ("Estación del Tranvía San José", "San José"),
 ])
 def test_osm_station_name_prefix_is_normalized(raw, expected):
     from movilidad.data import _normalize_station_name
@@ -221,7 +250,18 @@ def test_station_snapshot_includes_missing_nearby_stations(tmp_path, monkeypatch
     monkeypatch.setenv("OSM_SOURCE", "snapshot")
     stations = data.load_metro_stations(cache_version=999)
     names = {station["name"] for station in stations}
-    assert {"Aguacatala", "Ayurá", "Envigado", "Itagüí", "Santa Lucía"} <= names
+    assert {
+        "Aguacatala", "Ayurá", "Envigado", "Itagüí", "Sabaneta", "La Estrella",
+        "Santa Lucía", "San Javier", "San José", "Pabellón del Agua EPM", "Bicentenario",
+        "Buenos Aires", "Miraflores", "Loyola", "Alejandro Echavarría", "Oriente",
+    } <= names
+    assert [station["name"] for station in data.transit_route_stations(stations, "B")] == [
+        "San Antonio", "Cisneros", "Suramericana", "Estadio", "Floresta", "Santa Lucía", "San Javier",
+    ]
+    assert [station["name"] for station in data.transit_route_stations(stations, "T")] == [
+        "San Antonio", "San José", "Pabellón del Agua EPM", "Bicentenario", "Buenos Aires",
+        "Miraflores", "Loyola", "Alejandro Echavarría", "Oriente",
+    ]
 
 
 def test_live_station_loading_normalizes_names_and_keeps_supplement(tmp_path, monkeypatch):
@@ -233,7 +273,11 @@ def test_live_station_loading_normalizes_names_and_keeps_supplement(tmp_path, mo
         '<tag k="name" v="Estación del Metro Nueva"/>'
         '<tag k="network" v="Metro de Medellín"/>'
         '<tag k="public_transport" v="stop_position"/>'
-        '<tag k="subway" v="yes"/></node></osm>',
+        '<tag k="subway" v="yes"/></node>'
+        '<node id="2" lat="6.24" lon="-75.55">'
+        '<tag k="name" v="Pabellón del agua EPM"/>'
+        '<tag k="network" v="Tranvía de Ayacucho"/>'
+        '<tag k="railway" v="tram_stop"/></node></osm>',
         encoding="utf-8",
     )
     monkeypatch.setattr(data, "CACHE", tmp_path / "cache")
@@ -243,6 +287,7 @@ def test_live_station_loading_normalizes_names_and_keeps_supplement(tmp_path, mo
     stations = data.load_metro_stations(cache_version=998)
     by_name = {station["name"]: station for station in stations}
     assert by_name["Nueva"]["line"] == "Metro"
+    assert by_name["Pabellón del Agua EPM"]["line"] == "Tranvía"
     assert by_name["Aguacatala"]["line"] == "Metro"
 
 

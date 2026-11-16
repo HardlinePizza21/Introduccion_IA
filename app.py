@@ -7,7 +7,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 import altair as alt
@@ -22,14 +21,16 @@ sys.path.insert(0, str(ROOT / "src"))
 from movilidad.agent import LLMConfigError, MobilityAgent  # noqa: E402
 from movilidad.config import BBOX, MODES, SOURCES, AlgoParams, EnvParams, Weights  # noqa: E402
 from movilidad.data import (DATA_STATUS, PLACES, DataAccessError, load_metro_stations,
-                            metro_line_a_geometry)  # noqa: E402
+                            resolve_place, transit_route_geometries)  # noqa: E402
 from movilidad.planner import Planner  # noqa: E402
 from movilidad.rag import DocIndex  # noqa: E402
 
 st.set_page_config(page_title="Copiloto de Movilidad – Valle de Aburrá", page_icon="🚦", layout="wide")
 MODE_COLORS = {"carro": "#c0392b", "bicicleta": "#1e8449", "metro": "#7d3c98"}
-MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie", "metro": "A pie + Metro opcional (Línea A)"}
+MODE_LABELS = {"carro": "Carro", "bicicleta": "Bicicleta / a pie",
+               "metro": "A pie + Metro / Tranvía opcional"}
 CUSTOM = "📍 Coordenadas personalizadas"
+DEFAULT_DEPARTURE_HOUR = 8
 
 
 # ------------------------------------------------------------------ recursos
@@ -47,30 +48,41 @@ def get_index() -> DocIndex:
 
 
 @st.cache_data(show_spinner=False)
-def get_stations(cache_version: int = 2):
+def get_stations(cache_version: int = 3):
     try:
         return load_metro_stations(cache_version=cache_version)
     except DataAccessError:
         return []
 
 
-def build_route_map(shown_plans):
+def build_route_map(shown_plans, selected_points=None):
     fmap = folium.Map(location=[(BBOX[1] + BBOX[3]) / 2, (BBOX[0] + BBOX[2]) / 2], zoom_start=13,
                       tiles="OpenStreetMap")
-    stations_data = get_stations(2)
-    line_a = metro_line_a_geometry(stations_data)
-    if len(line_a) > 1:
-        folium.PolyLine(
-            line_a, color="#9b59b6", weight=3, opacity=0.55, dash_array="6 8",
-            tooltip="Línea A esquemática; estaciones conectadas en orden",
-        ).add_to(fmap)
-    stations = folium.FeatureGroup("Estaciones Metro / Metroplús")
+    coverage = folium.FeatureGroup(name="Límite del área de cobertura")
+    folium.Rectangle(
+        bounds=[(BBOX[1], BBOX[0]), (BBOX[3], BBOX[2])],
+        color="#f1c40f", weight=4, dash_array="8 6", fill=False,
+        tooltip="Límite del área de datos OpenStreetMap",
+    ).add_to(coverage)
+    coverage.add_to(fmap)
+    stations_data = get_stations(3)
+    route_colors = {"A": "#9b59b6", "B": "#2980b9", "T": "#e67e22"}
+    for route_id, geometry in transit_route_geometries(stations_data).items():
+        if len(geometry) > 1:
+            label = "Tranvía Línea T" if route_id == "T" else f"Línea {route_id}"
+            folium.PolyLine(
+                geometry, color=route_colors[route_id], weight=3, opacity=0.65, dash_array="6 8",
+                tooltip=f"{label} esquemática",
+            ).add_to(fmap)
+    stations = folium.FeatureGroup("Estaciones Metro y Tranvía")
     for station in stations_data:
+        color = "#e67e22" if station["line"] == "Tranvía" else "#7d3c98"
         folium.CircleMarker(
-            [station["lat"], station["lon"]], radius=5, color="#7d3c98", fill=True, fill_opacity=0.9,
+            [station["lat"], station["lon"]], radius=5, color=color, fill=True, fill_opacity=0.9,
             tooltip=f"{station['line']}: {station['name']}",
         ).add_to(stations)
     stations.add_to(fmap)
+    fmap.fit_bounds([(BBOX[1], BBOX[0]), (BBOX[3], BBOX[2])])
     for mode, route in shown_plans.items():
         legs = route.legs or [{
             "mode": mode, "geometry": route.geometry, "time_min": route.time_min, "description": MODE_LABELS[mode],
@@ -88,47 +100,100 @@ def build_route_map(shown_plans):
     if any_plan:
         folium.Marker(any_plan.origin, tooltip="Origen", icon=folium.Icon(color="green", icon="play")).add_to(fmap)
         folium.Marker(any_plan.destination, tooltip="Destino", icon=folium.Icon(color="red", icon="flag")).add_to(fmap)
+    elif selected_points:
+        if selected_points.get("origin"):
+            folium.Marker(selected_points["origin"], tooltip="Origen", icon=folium.Icon(
+                color="green", icon="play")).add_to(fmap)
+        if selected_points.get("destination"):
+            folium.Marker(selected_points["destination"], tooltip="Destino", icon=folium.Icon(
+                color="red", icon="flag")).add_to(fmap)
     folium.LayerControl().add_to(fmap)
     return fmap
 
 
-@st.cache_data(show_spinner="Calculando tiempos por hora del día…")
-def hourly_profile(origin, destination, env_json: str, w_json: str):
-    env, w = EnvParams(**json.loads(env_json)), Weights(**json.loads(w_json))
-    rows = []
-    for m in MODES:
-        hours = range(24) if m != "metro" else (8,)
-        for h in hours:
-            p = get_planner().plan(origin, destination, m, h, env, w)
-            if p.found:
-                profile_hours = range(24) if m == "metro" else (h,)
-                rows.extend({"hora": profile_hour, "modo": MODE_LABELS[m], "tiempo_min": round(p.time_min, 1)}
-                            for profile_hour in profile_hours)
-    return pd.DataFrame(rows)
-
-
 # ------------------------------------------------------------------ barra lateral
 st.sidebar.title("🚦 Copiloto de movilidad")
-st.sidebar.caption("Área: Centro – Laureles – El Poblado (Medellín). Datos viales: © OpenStreetMap.")
+st.sidebar.caption("Área de cobertura: ver límite amarillo en el mapa. Datos viales: © OpenStreetMap.")
+
+st.session_state.setdefault("origin_choice", "Universidad EAFIT")
+st.session_state.setdefault("destination_choice", "Universidad de Antioquia")
+st.session_state.setdefault("origin_coordinates", "6.2442, -75.5812")
+st.session_state.setdefault("destination_coordinates", "6.2442, -75.5812")
+st.session_state.setdefault("location_target", "Origen")
+st.session_state.setdefault("location_map_nonce", 0)
+
+st.title("Copiloto de movilidad: rutas con A* y asistente RAG")
+st.caption("Haz clic en el mapa para fijar el punto seleccionado. También puedes conservar o elegir lugares predeterminados.")
+
+try:
+    planner = get_planner()
+except DataAccessError as exc:
+    st.error(str(exc))
+    st.stop()
+
+location_target = st.segmented_control(
+    "Al hacer clic en el mapa, seleccionar",
+    ["Origen", "Destino"],
+    format_func=lambda value: f"Seleccionar {value.lower()}",
+    key="location_target",
+)
 
 
-def place_input(label, default):
-    opts = list(PLACES) + [CUSTOM]
-    choice = st.sidebar.selectbox(label, opts, index=opts.index(default))
+def selected_map_point(field):
+    choice = st.session_state[f"{field}_choice"]
     if choice == CUSTOM:
-        txt = st.sidebar.text_input(f"{label} (lat, lon)", "6.2442, -75.5812",
-                                    help=f"Debe estar dentro del área: lat {BBOX[1]}–{BBOX[3]}, lon {BBOX[0]}–{BBOX[2]}")
-        return txt
+        try:
+            return resolve_place(st.session_state[f"{field}_coordinates"])
+        except ValueError:
+            return None
+    return PLACES.get(choice)
+
+
+map_state = st_folium(
+    build_route_map({}, {
+        "origin": selected_map_point("origin"),
+        "destination": selected_map_point("destination"),
+    }),
+    height=430, use_container_width=True, returned_objects=["last_clicked"],
+    key=f"location_picker_{location_target}_{st.session_state.location_map_nonce}",
+)
+clicked = map_state.get("last_clicked") if map_state else None
+if clicked:
+    latitude, longitude = clicked["lat"], clicked["lng"]
+    field = "origin" if location_target == "Origen" else "destination"
+    if BBOX[1] <= latitude <= BBOX[3] and BBOX[0] <= longitude <= BBOX[2]:
+        st.session_state[f"{field}_choice"] = CUSTOM
+        st.session_state[f"{field}_coordinates"] = f"{latitude:.6f}, {longitude:.6f}"
+        st.session_state["location_click_message"] = f"{location_target} fijado en el mapa."
+    else:
+        st.session_state["location_click_message"] = "Selecciona un punto dentro del límite amarillo."
+    st.session_state.location_map_nonce += 1
+    st.rerun()
+
+location_click_message = st.session_state.pop("location_click_message", None)
+if location_click_message:
+    if location_click_message.startswith("Selecciona"):
+        st.warning(location_click_message)
+    else:
+        st.success(location_click_message)
+
+
+def place_input(label, field):
+    opts = list(PLACES) + [CUSTOM]
+    choice = st.sidebar.selectbox(label, opts, key=f"{field}_choice")
+    if choice == CUSTOM:
+        return st.sidebar.text_input(
+            f"{label} (lat, lon)", key=f"{field}_coordinates",
+            help=f"Debe estar dentro del área: lat {BBOX[1]}–{BBOX[3]}, lon {BBOX[0]}–{BBOX[2]}",
+        )
     return choice
 
 
-origin = place_input("Origen", "Universidad EAFIT")
-destination = place_input("Destino", "Universidad de Antioquia")
-hour = st.sidebar.slider("Hora de salida (hora local)", 0, 23, 8,
-                         help="Cambia el factor de congestión del carro; el Metro no usa horarios publicados.")
+origin = place_input("Origen", "origin")
+destination = place_input("Destino", "destination")
 modes = st.sidebar.multiselect("Alternativas de transporte", list(MODES), default=list(MODES),
                                format_func=lambda mode: MODE_LABELS[mode])
-st.sidebar.caption("La alternativa Metro combina caminata por OSM con estaciones de Línea A.")
+st.sidebar.caption("La alternativa combina caminata por OSM con las líneas A/B y el Tranvía T.")
 
 d = EnvParams()
 with st.sidebar.expander("1 · Parámetros del entorno", expanded=False):
@@ -137,8 +202,17 @@ with st.sidebar.expander("1 · Parámetros del entorno", expanded=False):
     speed_car = {c: st.number_input(f"Carro – {c}", 5.0, 100.0, v, 5.0, key=f"car_{c}") for c, v in d.speed_car.items()}
     speed_bike = st.number_input("Bicicleta (km/h, informativa)", 5.0, 35.0, d.speed_bike_kmh, 1.0)
     walk_speed = st.number_input("Caminata hacia/desde Metro (km/h, supuesto)", 2.0, 8.0, d.walk_speed_kmh, 0.5)
-    peak = st.slider("Factor de congestión en hora pico (6–8 h, 17–19 h)", 0.2, 1.0, d.peak_factor, 0.05,
-                     help="Multiplica la velocidad del carro. 1 = sin congestión.")
+    hour_col, peak_col = st.columns(2)
+    hour = hour_col.slider(
+        "Hora de salida (hora local)", 0, 23, DEFAULT_DEPARTURE_HOUR, 1, format="%d:00",
+        help="Se usa para estimar la congestión y planificar la ruta.",
+        key="departure_hour",
+    )
+    peak = peak_col.slider(
+        "Factor de congestión",
+        0.2, 1.0, d.peak_factor, 0.05,
+        help="Aplica entre 6–8 h y 17–19 h. Multiplica la velocidad del carro; 1 = sin congestión.",
+    )
     shoulder = st.slider("Factor en horas intermedias (9, 12, 13, 16, 20 h)", 0.2, 1.0, d.shoulder_factor, 0.05)
     cons = st.number_input("Consumo del carro (L/100 km)", 3.0, 25.0, d.car_consumption_l_100km, 0.5)
     price = st.number_input("Precio gasolina (COP/galón)", 0.0, 40000.0, d.gasoline_price_cop_gal, 100.0,
@@ -178,12 +252,6 @@ with st.sidebar.expander("3 · Algoritmo de búsqueda", expanded=False):
 algo = AlgoParams(algo_name, hw).clamp()
 
 # ------------------------------------------------------------------ cálculo
-st.title("Copiloto de movilidad: rutas con A* y asistente RAG")
-try:
-    planner = get_planner()
-except DataAccessError as exc:
-    st.error(str(exc))
-    st.stop()
 for net, status in DATA_STATUS.items():
     (st.sidebar.warning if "PLAN B" in status else st.sidebar.caption)(f"Red '{net}': {status}")
 
@@ -194,7 +262,7 @@ except ValueError as exc:
     st.error(f"Parámetros inválidos: {exc}")
     st.stop()
 
-tab_routes, tab_hours, tab_chat, tab_eval = st.tabs(["🗺️ Rutas", "⏱️ Hora del día", "💬 Asistente", "📊 Evaluación"])
+tab_routes, tab_chat, tab_eval = st.tabs(["🗺️ Rutas", "💬 Asistente", "📊 Evaluación"])
 
 with tab_routes:
     if not modes:
@@ -209,19 +277,25 @@ with tab_routes:
                      "Puntaje de preferencias": round(p.selection_cost, 3),
                      "Nodos expandidos": p.expanded, "Búsqueda (ms)": round(p.runtime_ms, 1),
                      "Nota": p.message if p.found else f"⚠️ {p.message}"})
-    winner_tab, all_routes_tab = st.tabs(["🏆 Ruta ganadora", "🌐 Todas las rutas"])
-    with winner_tab:
+    route_view = st.segmented_control(
+        "Vista de rutas",
+        ["🏆 Ruta ganadora", "🌐 Todas las rutas"],
+        default="🏆 Ruta ganadora",
+        key="route_map_view",
+    )
+    if route_view == "🏆 Ruta ganadora":
         if winner:
             st.caption(f"Menor puntaje con las preferencias actuales: {MODE_LABELS[winner.mode]}.")
             st_folium(build_route_map({winner.mode: winner}), height=520, use_container_width=True,
                       returned_objects=[], key="winner_route_map")
         else:
             st.info("No se encontró una ruta ganadora para los modos seleccionados.")
-    with all_routes_tab:
+    elif route_view == "🌐 Todas las rutas":
         st_folium(build_route_map(found_plans), height=520, use_container_width=True,
                   returned_objects=[], key="all_route_map")
-    st.caption("Rojo: carro · Verde: bicicleta · Azul-violeta: caminatas de la alternativa Metro · Morado: estaciones. "
-               "La Línea A se dibuja esquemáticamente entre estaciones; sus tramos no son geometría ferroviaria oficial.")
+    st.caption("Rojo: carro · Verde: bicicleta · Azul-violeta: caminata · Morado: Metro · Naranja: Tranvía. "
+               "Amarillo discontinuo: límite aproximado del área de cobertura de datos. "
+               "Las líneas A, B y T se dibujan esquemáticamente; no son geometría ferroviaria oficial.")
 
     st.subheader("Comparación de modos")
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -245,7 +319,7 @@ with tab_routes:
                          "Costo ponderado": round(p.weighted_cost, 4), "Tiempo (min)": round(p.time_min, 1)})
     st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
     if "metro" in modes:
-        st.caption("La alternativa Metro usa A* sobre la red peatonal y la Línea A esquemática; abordar es opcional y depende del costo ponderado.")
+        st.caption("La alternativa usa A* sobre la red peatonal y las líneas A/B y T esquemáticas; abordar es opcional y depende del costo ponderado.")
 
     st.subheader("Detalle por tramo")
     found_modes = [m for m, p in plans.items() if p.found]
@@ -254,27 +328,9 @@ with tab_routes:
         seg = pd.DataFrame(plans[sel].segments)
         st.dataframe(seg, hide_index=True, width="stretch", height=280)
 
-with tab_hours:
-    st.subheader("Tiempo estimado de viaje según la hora de salida")
-    st.caption("Recalcula la ruta por hora para carro; la caminata + Metro se mantiene constante porque no se modelan horarios ni variación temporal.")
-    prof = hourly_profile(origin, destination, json.dumps(asdict(env)), json.dumps(asdict(weights)))
-    if prof.empty:
-        st.warning("No hay ruta para estos puntos.")
-    else:
-        line = alt.Chart(prof).mark_line(point=True).encode(
-            x=alt.X("hora:Q", title="Hora de salida", scale=alt.Scale(domain=[0, 23])),
-            y=alt.Y("tiempo_min:Q", title="Tiempo (min)"),
-            color=alt.Color(
-                "modo:N",
-                scale=alt.Scale(domain=list(MODE_LABELS.values()), range=list(MODE_COLORS.values())),
-            ),
-            tooltip=["hora", "modo", "tiempo_min"])
-        rule = alt.Chart(pd.DataFrame({"hora": [hour]})).mark_rule(strokeDash=[4, 4]).encode(x="hora:Q")
-        st.altair_chart(line + rule, width="stretch")
-
 with tab_chat:
     st.subheader("Asistente (LLM + RAG + herramientas)")
-    st.caption("Usa la hora, los parámetros y los pesos del dashboard. Herramientas: plan_route, compare_modes, "
+    st.caption(f"Usa la hora de salida {hour:02d}:00, los parámetros y los pesos del dashboard. Herramientas: plan_route, compare_modes, "
                "search_docs, check_pico_y_placa, nearest_metro_station. No es consejo legal ni de seguridad.")
     if "history" not in st.session_state:
         st.session_state.history = []

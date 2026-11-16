@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 
-# Área de estudio (left, bottom, right, top) en grados: Centro – Laureles – El Poblado.
-# Se mantiene pequeña para que la descarga OSM y la búsqueda sean rápidas en la demo.
-BBOX = (-75.600, 6.195, -75.555, 6.272)
+# Área de estudio (left, bottom, right, top) en grados: corredor Centro–La Estrella,
+# San Javier y Oriente, para que las tres líneas de transporte queden conectadas a OSM.
+BBOX = (-75.645, 6.135, -75.525, 6.275)
 
 MODES = ("carro", "bicicleta", "metro")
 

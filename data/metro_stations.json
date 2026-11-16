@@ -1,5 +1,11 @@
 [
  {
+  "name": "Alejandro Echavarría",
+  "line": "Tranvía",
+  "lat": 6.2355157,
+  "lon": -75.541714
+ },
+ {
   "name": "Aguacatala",
   "line": "Metro",
   "lat": 6.1938324,
@@ -22,6 +28,18 @@
   "line": "Metroplús",
   "lat": 6.228677833333333,
   "lon": -75.57022446666667
+ },
+ {
+  "name": "Bicentenario",
+  "line": "Tranvía",
+  "lat": 6.2439795,
+  "lon": -75.5587477
+ },
+ {
+  "name": "Buenos Aires",
+  "line": "Tranvía",
+  "lat": 6.2413607,
+  "lon": -75.5539094
  },
  {
   "name": "Cisneros",
@@ -78,10 +96,40 @@
   "lon": -75.6067143
  },
  {
+  "name": "La Estrella",
+  "line": "Metro",
+  "lat": 6.1526551,
+  "lon": -75.6264393
+ },
+ {
+  "name": "Loyola",
+  "line": "Tranvía",
+  "lat": 6.2390294,
+  "lon": -75.5451397
+ },
+ {
+  "name": "Miraflores",
+  "line": "Tranvía",
+  "lat": 6.2413464,
+  "lon": -75.5490355
+ },
+ {
   "name": "Palos Verdes",
   "line": "Metroplús",
   "lat": 6.2632506,
   "lon": -75.5564143
+ },
+ {
+  "name": "Pabellón del Agua EPM",
+  "line": "Tranvía",
+  "lat": 6.24562,
+  "lon": -75.5619794
+ },
+ {
+  "name": "Oriente",
+  "line": "Tranvía",
+  "lat": 6.2332831,
+  "lon": -75.5403311
  },
  {
   "name": "Parque Berrío",
@@ -112,6 +160,30 @@
   "line": "Metro",
   "lat": 6.247079725,
   "lon": -75.56963892499999
+ },
+ {
+  "name": "San Antonio",
+  "line": "Tranvía",
+  "lat": 6.247035,
+  "lon": -75.5691478
+ },
+ {
+  "name": "San Javier",
+  "line": "Metro",
+  "lat": 6.25703085,
+  "lon": -75.61400935
+ },
+ {
+  "name": "San José",
+  "line": "Tranvía",
+  "lat": 6.2473603,
+  "lon": -75.5653778
+ },
+ {
+  "name": "Sabaneta",
+  "line": "Metro",
+  "lat": 6.15782665,
+  "lon": -75.61599465
  },
  {
   "name": "Santa Lucía",

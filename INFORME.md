@@ -4,20 +4,20 @@
 
 ## 1. Problema
 
-Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tiene que elegir entre carro, bicicleta/a pie y Metro, según el tiempo, costo, emisiones y restricciones como el pico y placa. La información está dispersa: mapas por un lado, normas y tarifas en noticias y sitios oficiales por otro. Construimos un MVP que (i) calcula y compara rutas con un A\* propio sobre redes de OpenStreetMap para carro y bicicleta/a pie, además de una alternativa multimodal con caminata y abordaje opcional de la Línea A, y (ii) ofrece un asistente conversacional que combina esas rutas con un corpus documental citado. No hay información centralizada de los recorridos de bus, así que el MVP no calcula rutas de bus.
+Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tiene que elegir entre carro, bicicleta/a pie y transporte masivo, según el tiempo, costo, emisiones y restricciones como el pico y placa. La información está dispersa: mapas por un lado, normas y tarifas en noticias y sitios oficiales por otro. Construimos un MVP que (i) calcula y compara rutas con un A\* propio sobre redes de OpenStreetMap para carro y bicicleta/a pie, además de una alternativa multimodal con caminata y abordaje opcional de las líneas A/B del Metro y T del Tranvía, y (ii) ofrece un asistente conversacional que combina esas rutas con un corpus documental citado. No hay información centralizada de los recorridos de bus, así que el MVP no calcula rutas de bus.
 
 ## 2. Datos
 
 | Dato | Fuente | Tipo |
 |---|---|---|
-| Red vehicular (5.811 nodos, 12.421 arcos dirigidos) y red peatonal (19.371 nodos, 59.926 arcos) | OpenStreetMap, API 0.6, 12 recuadros del área (lon −75,600 a −75,555; lat 6,195 a 6,272), procesados con OSMnx | Observado |
-| Estaciones de Metro y Metroplús, incluidas Aguacatala, Ayurá, Envigado, Itagüí y Santa Lucía | OpenStreetMap (`network=Metro de Medellín`/Metroplús) | Observado |
+| Red vehicular (16.798 nodos, 37.039 arcos dirigidos) y red peatonal (47.741 nodos, 136.796 arcos dirigidos) | OpenStreetMap, API 0.6, 56 recuadros (lon −75,645 a −75,525; lat 6,135 a 6,275), procesados con OSMnx | Observado |
+| Estaciones de las líneas A y B del Metro y T del Tranvía, incluidas Sabaneta, La Estrella, San Javier y Oriente | OpenStreetMap (`network=Metro de Medellín`) y respaldo versionado | Observado |
 | Gasolina: $16.251/galón | Circular CREG 371/2026 (Medellín, noviembre de 2026) | Oficial |
 | Tarifas: Metro $3.820 (usada en la ruta Metro); bus $3.000 (solo informativa en el RAG) | Prensa, enero de 2026 (Publimetro, Valora Analitik) | Secundario |
 | Pico y placa 2026-2 | Alcaldía de Medellín y prensa local | Oficial y secundario |
-| Velocidades de carro, bicicleta y caminata, congestión, consumo, factor de CO₂, velocidad y espera del Metro | Supuestos del equipo (CO₂ cercano a IPCC 2006) | **Supuesto ajustable** |
+| Velocidades de carro, bicicleta y caminata, congestión, consumo, factor de CO₂, velocidad y espera del Metro/Tranvía | Supuestos del equipo (CO₂ cercano a IPCC 2006) | **Supuesto ajustable** |
 
-**Acceso y plan B.** El servidor Overpass que OSMnx usa por defecto devolvió 502 (saturación) durante el desarrollo. Por eso descargamos la red con la API principal de OSM en recuadros y replicamos los filtros de los tipos de red `drive` y `walk` de OSMnx. Versionamos una instantánea comprimida (3,9 MB en `data/`) que la app usa si la descarga falla. Una prueba automática lo verifica.
+**Acceso y plan B.** El servidor Overpass que OSMnx usa por defecto devolvió 502 (saturación) durante el desarrollo. Por eso descargamos la red con la API principal de OSM en recuadros y replicamos los filtros de los tipos de red `drive` y `walk` de OSMnx. Versionamos instantáneas comprimidas (11,2 MB en `data/`) que la app usa si la descarga falla. Una prueba automática lo verifica.
 
 ## 3. Método de la Parte 1: búsqueda A\* multiobjetivo
 
@@ -25,26 +25,35 @@ Una persona que se mueve entre el Centro, Laureles y El Poblado de Medellín tie
 
 **Costo por arco.** Para un arco de longitud $L$, clase de vía $c$, modo $m$ y hora $h$:
 
-- Para carro, la velocidad es $v = v^{base}_{c}\cdot f(h)$, con $f(h)=0{,}55$ en pico (6–8 h y 17–19 h), $0{,}8$ en horas intermedias y $1$ en el resto.
+- Para carro, la velocidad es $v = v^{base}_{c}\cdot f(h)$. La función $f(h)$ simula la congestión vial al reducir la velocidad del auto según la hora: vale $0{,}55$ en pico (6–8 h y 17–19 h), $0{,}8$ en horas intermedias y $1$ en el resto.
 - Tiempo $t=L/v$. Combustible $= L\cdot\text{consumo}/100$. Costo del carro = litros × precio; CO₂ = litros × factor de emisión. La bicicleta/a pie usa una velocidad informativa constante y minimiza la distancia.
-- La alternativa Metro ejecuta A\* en un grafo combinado: conserva los tramos peatonales OSM y agrega enlaces esquemáticos entre estaciones de Línea A, con acciones de abordaje/descenso. El tren es opcional; la búsqueda puede devolver un itinerario solo a pie si tiene menor costo ponderado. Usa velocidad Metro 35 km/h y 5 minutos de espera supuestos; cobra la tarifa frecuente de referencia $3.820 al abordar. El trazo entre estaciones es esquemático y no modela horarios ni emisiones eléctricas.
+- La alternativa multimodal ejecuta A\* en un grafo combinado: conserva los tramos peatonales OSM y agrega enlaces esquemáticos entre estaciones consecutivas de las líneas A/B del Metro y T del Tranvía, con acciones de abordaje/descenso y transbordo por caminata. Abordar es opcional; la búsqueda puede devolver un itinerario solo a pie si tiene menor costo ponderado. Usa velocidad de 35 km/h y 5 minutos de espera supuestos; aplica la tarifa frecuente de referencia $3.820 en cada abordaje. Los trazos no modelan horarios ni geometría ferroviaria oficial.
+- Los pesos $w_d$, $w_t$, $w_c$ y $w_e$ representan la importancia relativa que se da, respectivamente, a la distancia, el tiempo, el costo monetario y las emisiones. Son coeficientes no negativos que permiten priorizar unas variables sobre otras; las cantidades se expresan en las escalas indicadas en la ecuación.
 - Costo escalar $c = w_d\,\text{km} + w_t\,\text{min} + w_c\,\text{kCOP} + w_e\,(100\,\text{g CO}_2)$, con $w\ge 0$ (validado).
 
-**Heurística.** $h(n)=\alpha\cdot k_{min}\cdot d_{hav}(n,\text{meta})$, donde $k_{min}=\min_e c_e/L_e$ es el menor costo por metro de todo el grafo. Como $L_{uv}\ge d_{hav}(u,v)$, se cumple $c_{uv}\ge k_{min}L_{uv}\ge k_{min}\,[d_{hav}(u,g)-d_{hav}(v,g)]$. Por tanto $h$ es **consistente** (y admisible) para $\alpha\in[0,1]$. La interfaz limita $\alpha$ a ese rango y no ofrece variantes no admisibles. La construcción sirve para cualquier combinación de pesos, porque $k_{min}$ se recalcula cada vez que cambian los parámetros.
+**Heurística.** A* prioriza los nodos usando $f(n)=g(n)+h(n)$: $g(n)$ es el costo real acumulado desde el origen hasta $n$, y $h(n)$ estima el costo que falta hasta la meta. Aquí usamos
+
+$$h(n)=\alpha\cdot k_{min}\cdot d_{hav}(n,\text{meta}),\qquad k_{min}=\min_e \frac{c_e}{L_e}.$$
+
+$d_{hav}$ es la distancia en línea recta entre el nodo y la meta; $k_{min}$ es el menor costo por metro entre todas las aristas, según los pesos y parámetros actuales. La distancia en línea recta no puede superar la longitud de una ruta por las calles, y ninguna arista tiene un costo por metro menor que $k_{min}$. Por eso $k_{min}\,d_{hav}$ es una **estimación optimista** del costo restante: puede ser menor que el costo real, pero no mayor. No intenta adivinar la ruta exacta; sirve para orientar la búsqueda hacia la meta sin descartar rutas óptimas.
+
+Esta propiedad se formaliza por arista. Para una arista $u\to v$, la desigualdad triangular da $d_{hav}(u,g)-d_{hav}(v,g)\le d_{hav}(u,v)\le L_{uv}$ y, por definición de $k_{min}$, $c_{uv}\ge k_{min}L_{uv}$. Así, para $\alpha\in[0,1]$, $h(u)\le c_{uv}+h(v)$: la heurística es **consistente**, y por tanto también admisible. La consistencia garantiza que A* no necesita reabrir nodos ya procesados; la admisibilidad garantiza que la ruta encontrada conserva el costo óptimo.
+
+$\alpha$ controla la intensidad de la heurística: con $\alpha=0$, $h=0$ y A* equivale a Dijkstra; al aumentar $\alpha$, la estimación influye más en el orden de exploración y puede reducir los nodos expandidos. Se limita a $[0,1]$ para conservar la garantía de no sobreestimar. Como los costos de las aristas cambian con las preferencias y los parámetros del entorno, $k_{min}$ se recalcula cada vez que estos cambian.
 
 **Líneas base.** Dijkstra/UCS (A\* con $h=0$, óptimo) y BFS (minimiza el número de tramos, sin pesos).
 
-**Resultados.** Usamos 100 pares origen-destino aleatorios por escenario (semilla 7, distancia en línea recta ≥ 1 km, mediana 3,4 km), 1.200 búsquedas en total ([eval/results/benchmark_summary.md](eval/results/benchmark_summary.md)):
+**Resultados.** Usamos 100 pares origen-destino aleatorios por escenario (semilla 7, distancia en línea recta ≥ 1 km, mediana 5,7 km), 1.200 búsquedas en total sobre el corredor ampliado ([eval/results/benchmark_summary.md](eval/results/benchmark_summary.md)):
 
 | Escenario | Nodos expandidos A\* | Dijkstra | BFS | Reducción A\* vs Dijkstra | % óptimo A\* | Sobrecosto BFS |
 |---|---:|---:|---:|---:|---:|---:|
-| Carro, tiempo, 8 h | 1.102 | 2.959 | 2.859 | 64,8 % | 100 % | +20,9 % |
-| Carro, multiobjetivo, 14 h | 859 | 2.992 | 2.859 | 72,9 % | 100 % | +15,7 % |
-| Bicicleta, distancia, 10 h | 2.063 | 11.104 | 10.312 | 82,1 % | 100 % | +39,4 % |
+| Carro, tiempo, 8 h | 3.558 | 7.869 | 8.190 | 57,7 % | 100 % | +22,5 % |
+| Carro, multiobjetivo, 14 h | 2.834 | 7.860 | 8.190 | 66,8 % | 100 % | +20,8 % |
+| Bicicleta, distancia, 10 h | 5.813 | 23.791 | 22.421 | 77,4 % | 100 % | +34,2 % |
 
-A\* encontró siempre el costo óptimo de Dijkstra y expandió entre 64,8 % y 82,1 % menos nodos. Con $\alpha=0{,}5$ la reducción frente a Dijkstra cae a 31,5 %, 35,1 % y 38,2 %, respectivamente, como era de esperar con una cota menos informada. BFS solo coincide con el óptimo en el 0–7 % de los casos y produce rutas entre 15,7 % y 39,4 % más costosas. La ganancia es mayor en distancia ($k_{min}$ ajustado, porque el costo es proporcional a la longitud) que en tiempo, donde $k_{min}$ lo fija la vía más rápida y la cota queda más holgada. Las pruebas unitarias verifican la consistencia arco por arco, la igualdad de costos A\*/Dijkstra en 150 consultas sobre grillas y el rechazo de pesos negativos y de $\alpha>1$.
+A\* encontró siempre el costo óptimo de Dijkstra y expandió entre 57,7 % y 77,4 % menos nodos. Con $\alpha=0{,}5$ la reducción frente a Dijkstra cae a 27,2 %, 31,1 % y 36,6 %, respectivamente, como era de esperar con una cota menos informada. BFS solo coincide con el óptimo en el 2–5 % de los casos y produce rutas entre 20,8 % y 34,2 % más costosas. La ganancia es mayor en distancia ($k_{min}$ ajustado, porque el costo es proporcional a la longitud) que en tiempo, donde $k_{min}$ lo fija la vía más rápida y la cota queda más holgada. Las pruebas unitarias verifican la consistencia arco por arco, la igualdad de costos A\*/Dijkstra en 150 consultas sobre grillas y el rechazo de pesos negativos y de $\alpha>1$.
 
-*Ejemplo (EAFIT → U. de Antioquia, 8 h):* carro 8,17 km, 15,6 min, $2.806 y 1,51 kg CO₂; bicicleta/a pie 7,96 km, 31,8 min y sin emisiones directas; caminata + Metro 8,84 km, 44,9 min y $3.820. A las 3 h el carro tarda 8,6 min. Si se optimizan emisiones, el carro toma una ruta de 7,72 km (1,43 kg CO₂, 17,0 min).
+*Ejemplo (EAFIT → U. de Antioquia, 8 h):* carro 8,17 km, 15,6 min, $2.806 y 1,51 kg CO₂; bicicleta/a pie 7,96 km, 31,8 min y sin emisiones directas; caminata + Metro 10,27 km, 40,1 min y $3.820. A las 3 h el carro tarda 8,6 min. Si se optimizan emisiones, el carro toma una ruta de 7,72 km (1,43 kg CO₂, 17,0 min).
 
 ## 4. Diseño del agente y del RAG
 
@@ -75,16 +84,16 @@ Ninguna herramienta devolvió error. La media fue de 2,3 iteraciones por pregunt
 - **Variabilidad.** Aun con `temperature=0`, las respuestas cambian entre corridas. En una corrida previa, con la versión anterior del sistema, Q07 confundió el horario de la restricción y varias citas traían secciones inventadas. Por eso las cifras deben leerse como una muestra, no como una tasa estable. Con 14 preguntas, la incertidumbre es amplia.
 - **Capa gratuita.** Groq limita a 8.000 tokens/min. Una corrida previa perdió una pregunta por el error 429, y el script ahora reintenta solo ante ese error.
 
-El loop, la ejecución de herramientas, el manejo de JSON inválido, el corte por $T_{max}$ y el error de configuración se verificaron además con un LLM simulado en las pruebas automáticas (44/44 pruebas pasan).
+El loop, la ejecución de herramientas, el manejo de JSON inválido, el corte por $T_{max}$ y el error de configuración se verificaron además con un LLM simulado en las pruebas automáticas (54/54 pruebas pasan).
 
 ## 6. Dashboard e interacción
 
-En Streamlit, la barra lateral permite elegir origen y destino (12 lugares o coordenadas), la hora, los modos de ruta (carro, bicicleta/a pie y caminata con Metro opcional) y tres grupos de controles explicados: (1) parámetros del entorno (velocidades, congestión, consumo y tarifas), (2) pesos de preferencias y (3) algoritmo e intensidad de la heurística. Cualquier cambio recalcula los costos y vuelve a ejecutar la búsqueda. La pestaña **Rutas** muestra dos mapas Folium (ruta ganadora por puntaje de preferencias y todas las rutas), estaciones y trazo esquemático de Línea A, tabla y gráfico comparativo, A\* frente a Dijkstra y BFS para los modos con red vial, y detalle por tramo. **Hora del día** compara carro y bicicleta/a pie para las 24 horas; la alternativa Metro queda constante porque no se modelan horarios. **Asistente** es el chat con el agente: muestra cada llamada a herramienta, sus argumentos y su resultado. **Evaluación** muestra el benchmark de búsqueda y los resultados del agente.
+En Streamlit, la barra lateral permite elegir origen y destino (12 lugares o coordenadas), la hora, los modos de ruta (carro, bicicleta/a pie y caminata con Metro/Tranvía opcional) y tres grupos de controles explicados: (1) parámetros del entorno (velocidades, congestión, consumo y tarifas), (2) pesos de preferencias y (3) algoritmo e intensidad de la heurística. Cualquier cambio recalcula los costos y vuelve a ejecutar la búsqueda. La pestaña **Rutas** muestra dos mapas Folium (ruta ganadora por puntaje de preferencias y todas las rutas), estaciones y trazos esquemáticos de las líneas A, B y T, tabla y gráfico comparativo, A\* frente a Dijkstra y BFS para los modos con red vial, y detalle por tramo. **Hora del día** compara carro y bicicleta/a pie para las 24 horas; la alternativa multimodal queda constante porque no se modelan horarios. **Asistente** es el chat con el agente: muestra cada llamada a herramienta, sus argumentos y su resultado. **Evaluación** muestra el benchmark de búsqueda y los resultados del agente.
 
 ## 7. Limitaciones y uso responsable
 
 - **Sin tráfico real.** La congestión es un factor horario supuesto. Los tiempos sirven para comparar alternativas, no como predicción.
-- No se calculan rutas de bus porque no hay una fuente centralizada de recorridos. La alternativa Metro se limita a la Línea A y estaciones conectadas con la red peatonal; abordar es opcional y la geometría del tren es esquemática. No incluye horarios, transbordos ni otras líneas. La bicicleta/a pie usa la red peatonal de OSM y no considera ciclorrutas ni pendientes.
+- No se calculan rutas de bus porque no hay una fuente centralizada de recorridos. La alternativa multimodal cubre las líneas A/B del Metro y T del Tranvía; las caminatas usan la red peatonal y los trazos entre estaciones son esquemáticos. No incluye horarios ni integración tarifaria. La bicicleta/a pie usa la red peatonal de OSM y no considera ciclorrutas ni pendientes.
 - Factores de emisión y consumos aproximados. Deberían calibrarse con FECOC (UPME) y con datos de flota.
 - El corpus resume fuentes de prensa y oficiales a noviembre de 2026. Algunas cifras difieren entre fuentes (por ejemplo, la multa) y el agente está instruido para decirlo. `check_pico_y_placa` no conoce los festivos.
 - Las métricas del agente dependen del modelo LLM y del proveedor. Con la capa gratuita puede haber límites de uso.

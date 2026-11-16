@@ -8,7 +8,7 @@ Las vías se filtran con los mismos criterios de los tipos de red 'drive' y 'wal
 de OSMnx y el grafo se construye con `osmnx.graph_from_xml`.
 
 Caché: las teselas crudas se guardan en `cache/osm_tiles/` y el grafo resultante
-en `cache/<red>.graphml`; las ejecuciones siguientes no requieren internet.
+en `cache/<red>_metro_corridor.graphml`; las ejecuciones siguientes no requieren internet.
 Plan B: si la descarga falla y no hay caché, se usa la instantánea versionada en
 `data/<red>.graphml.gz` (descargada de OSM el 12-nov-2026) y se avisa al usuario.
 Sin descarga ni instantánea se lanza `DataAccessError` con un mensaje claro.
@@ -51,19 +51,67 @@ PLACES = {
     "Unicentro Medellín": (6.2411, -75.5868),
 }
 
-METRO_LINE_A_ORDER = (
-    "Universidad", "Hospital", "Prado", "Parque Berrío", "San Antonio",
-    "Alpujarra", "Exposiciones", "Industriales", "Poblado", "Aguacatala", "Ayurá", "Envigado", "Itagüí",
-)
+TRANSIT_ROUTES = {
+    "A": {
+        "line": "Metro",
+        "label": "Línea A",
+        "stations": (
+            "Universidad", "Hospital", "Prado", "Parque Berrío", "San Antonio",
+            "Alpujarra", "Exposiciones", "Industriales", "Poblado", "Aguacatala",
+            "Ayurá", "Envigado", "Itagüí", "Sabaneta", "La Estrella",
+        ),
+    },
+    "B": {
+        "line": "Metro",
+        "label": "Línea B",
+        "stations": (
+            "San Antonio", "Cisneros", "Suramericana", "Estadio", "Floresta",
+            "Santa Lucía", "San Javier",
+        ),
+    },
+    "T": {
+        "line": "Tranvía",
+        "label": "Tranvía Línea T",
+        "stations": (
+            "San Antonio", "San José", "Pabellón del Agua EPM", "Bicentenario",
+            "Buenos Aires", "Miraflores", "Loyola", "Alejandro Echavarría", "Oriente",
+        ),
+    },
+}
+METRO_LINE_A_ORDER = TRANSIT_ROUTES["A"]["stations"]
 
 
 def metro_line_a_stations(stations: list[dict]) -> list[dict]:
-    """Ordena las estaciones de Línea A disponibles en el área de estudio."""
+    """Compatibilidad: ordena las estaciones disponibles de Línea A."""
+    return transit_route_stations(stations, "A")
+
+
+def _station_key(name: str) -> str:
+    import unicodedata
+
+    return "".join(
+        char for char in unicodedata.normalize("NFKD", name.casefold())
+        if not unicodedata.combining(char)
+    )
+
+
+TRANSIT_STATION_NAMES = {
+    _station_key(name): name
+    for route in TRANSIT_ROUTES.values() for name in route["stations"]
+}
+
+
+def transit_route_stations(stations: list[dict], route: str) -> list[dict]:
+    """Devuelve las estaciones disponibles de una línea en orden de recorrido."""
+    config = TRANSIT_ROUTES[route]
     by_name = {
-        station["name"]: station for station in stations
-        if station.get("line") == "Metro" and station.get("name") in METRO_LINE_A_ORDER
+        _station_key(station["name"]): station for station in stations
+        if station.get("line") == config["line"]
     }
-    return [by_name[name] for name in METRO_LINE_A_ORDER if name in by_name]
+    return [
+        by_name[_station_key(name)] for name in config["stations"]
+        if _station_key(name) in by_name
+    ]
 
 
 def metro_line_a_geometry(stations: list[dict]) -> list[tuple[float, float]]:
@@ -71,12 +119,23 @@ def metro_line_a_geometry(stations: list[dict]) -> list[tuple[float, float]]:
     return [(station["lat"], station["lon"]) for station in metro_line_a_stations(stations)]
 
 
+def transit_route_geometries(stations: list[dict]) -> dict[str, list[tuple[float, float]]]:
+    """Trazos esquemáticos de las líneas A, B y T según el orden de sus estaciones."""
+    return {
+        route: [(station["lat"], station["lon"]) for station in transit_route_stations(stations, route)]
+        for route in TRANSIT_ROUTES
+    }
+
+
 def _normalize_station_name(name: str) -> str:
     """Quita prefijos de OSM como 'Estación del Metro' sin descartar la estación."""
     normalized = name.strip()
     if normalized.casefold().startswith("estación "):
         normalized = normalized[len("estación "):].strip()
-    for prefix in ("del metroplús ", "del metroplus ", "del metro ", "metroplús ", "metroplus ", "metro "):
+    for prefix in (
+        "del metroplús ", "del metroplus ", "del metro ", "metroplús ", "metroplus ", "metro ",
+        "del tranvía ", "del tranvia ", "tranvía ", "tranvia ",
+    ):
         if normalized.casefold().startswith(prefix):
             return normalized[len(prefix):].strip()
     return normalized
@@ -234,13 +293,13 @@ def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
     import os
 
     CACHE.mkdir(parents=True, exist_ok=True)
-    snapshot = CACHE / f"{network_type}.graphml"
+    snapshot = CACHE / f"{network_type}_metro_corridor.graphml"
     # OSM_SOURCE=snapshot: usar directamente la instantánea de data/ (despliegue en la nube,
     # evita descargar de la API de OSM en cada arranque en frío).
     force_snapshot = os.getenv("OSM_SOURCE", "live").lower() == "snapshot"
     if snapshot.exists() and not refresh:
         G = ox.load_graphml(snapshot)
-        DATA_STATUS[network_type] = "caché local de una descarga OSM previa"
+        DATA_STATUS[network_type] = "caché local del corredor ampliado de OSM"
     else:
         try:
             if force_snapshot:
@@ -259,18 +318,18 @@ def load_graph(network_type: str, refresh: bool = False) -> RoadGraph:
 
             with gzip.open(backup, "rb") as src, open(snapshot, "wb") as dst:
                 shutil.copyfileobj(src, dst)
-            DATA_STATUS[network_type] = ("instantánea OSM versionada (data/, 12-nov-2026)" if force_snapshot
-                                         else "PLAN B: instantánea OSM versionada (data/, 12-nov-2026)")
+            DATA_STATUS[network_type] = ("instantánea OSM versionada del corredor ampliado"
+                                         if force_snapshot else "PLAN B: instantánea OSM versionada del corredor ampliado")
             return from_networkx(ox.load_graphml(snapshot), network_type)
         ox.save_graphml(G, snapshot)
     return from_networkx(G, network_type)
 
 
-def load_metro_stations(cache_version: int = 2) -> list[dict]:
-    """Estaciones Metro y Metroplús disponibles, uniendo OSM en vivo con el respaldo versionado.
+def load_metro_stations(cache_version: int = 3) -> list[dict]:
+    """Estaciones Metro, Tranvía y Metroplús, uniendo OSM en vivo con el respaldo versionado.
 
     En OSM las estaciones de Medellín se modelan como nodos `public_transport=stop_position|station`
-    con `network=Metro de Medellín` (o Metroplús); se agrupan por nombre y se promedian coordenadas.
+    o `railway=tram_stop`; se agrupan por nombre y se promedian coordenadas.
     """
     snapshot = CACHE / f"metro_stations_v{cache_version}.json"
     if snapshot.exists():
@@ -289,22 +348,24 @@ def load_metro_stations(cache_version: int = 2) -> list[dict]:
     for p in tiles:
         for el in ET.parse(p).getroot().iter("node"):
             tags = {t.get("k"): t.get("v") for t in el.findall("tag")}
-            network = tags.get("network", "")
+            network = tags.get("network", "").casefold()
             raw_name = tags.get("name")
-            if not raw_name or "metro" not in network.lower():
+            is_transit_network = "metro" in network or "tranv" in network
+            if not raw_name or not is_transit_network:
                 continue
             if tags.get("public_transport") not in ("stop_position", "station", "platform") and                     tags.get("railway") not in ("station", "halt", "tram_stop"):
                 continue
             name = _normalize_station_name(raw_name)
             if not name:
                 continue
+            name = TRANSIT_STATION_NAMES.get(_station_key(name), name)
             lat, lon = float(el.get("lat")), float(el.get("lon"))
             if not (bottom <= lat <= top and left <= lon <= right):
                 continue
-            if tags.get("subway") == "yes" or tags.get("train") == "yes":
-                kind = "Metro"
-            elif tags.get("tram") == "yes" or tags.get("railway") == "tram_stop":
+            if tags.get("tram") == "yes" or tags.get("railway") == "tram_stop":
                 kind = "Tranvía"
+            elif tags.get("subway") == "yes" or tags.get("train") == "yes":
+                kind = "Metro"
             elif tags.get("aerialway") or tags.get("gondola") == "yes":
                 kind = "Metrocable"
             else:

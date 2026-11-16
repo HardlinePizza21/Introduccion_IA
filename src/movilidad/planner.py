@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass, field
 
 from .config import AlgoParams, EnvParams, MODES, Weights
-from .data import RoadGraph, load_graph, load_metro_stations, metro_line_a_stations, resolve_place
+from .data import RoadGraph, TRANSIT_ROUTES, load_graph, load_metro_stations, resolve_place, transit_route_stations
 from .search import astar, bfs, dijkstra, haversine_m, make_heuristic
 
 NETWORK_FOR_MODE = {"carro": "drive", "bicicleta": "walk"}
@@ -235,21 +235,24 @@ class Planner:
         if stations is None:
             stations = load_metro_stations()
             self._stations = stations
-        connected_stations = []
-        for station in metro_line_a_stations(stations):
-            station_xy = (station["lat"], station["lon"])
-            road_node, snap_m = graph.nearest_node(station_xy)
-            if snap_m > MAX_SNAP_M:
-                continue
-            connected_stations.append((station, station_xy, road_node, snap_m))
+        connected_stations = {}
+        for route_id in TRANSIT_ROUTES:
+            for station in transit_route_stations(stations, route_id):
+                station_key = (station["line"], station["name"])
+                if station_key in connected_stations:
+                    continue
+                station_xy = (station["lat"], station["lon"])
+                road_node, snap_m = graph.nearest_node(station_xy)
+                if snap_m > MAX_SNAP_M:
+                    continue
+                connected_stations[station_key] = (station, station_xy, road_node, snap_m)
 
-        for index, (station, station_xy, road_node, snap_m) in enumerate(connected_stations):
-            platform = ("platform", index)
-            onboard = ("train", index)
+        platforms = {}
+        for station_key, (station, station_xy, road_node, snap_m) in connected_stations.items():
+            platform = ("platform", *station_key)
+            platforms[station_key] = platform
             coords[platform] = station_xy
-            coords[onboard] = station_xy
             adjacency[platform] = []
-            adjacency[onboard] = []
             access_metrics = EdgeMetrics(
                 snap_m, env.walk_speed_kmh, snap_m / (env.walk_speed_kmh / 3.6), 0.0, 0.0,
                 f"aproximación peatonal al nodo OSM más cercano; {walk_provenance}",
@@ -260,41 +263,52 @@ class Planner:
                 f"Caminata hasta {station['name']}", f"Acceso a {station['name']}", "acceso a estación",
             )
             add_transition(
-                platform, road_nodes[road_node], "walk", "a pie", access_metrics,
-                connector_geometry[::-1], f"Caminata desde {station['name']}",
-                f"Salida de {station['name']}", "acceso a estación",
-            )
-            board = EdgeMetrics(
-                0.0, 0.0, env.metro_boarding_min * 60, env.metro_fare_cop, 0.0,
-                "tarifa frecuente 2026 y espera de abordaje supuesta",
-            )
-            add_transition(
-                platform, onboard, "board", "metro", board, [],
-                f"Abordaje en {station['name']}", f"Abordaje en {station['name']}", "Metro Línea A",
-            )
-            alight = EdgeMetrics(0.0, 0.0, 0.0, 0.0, 0.0, "descenso del tren")
-            add_transition(
-                onboard, platform, "alight", "metro", alight, [],
-                f"Descenso en {station['name']}", f"Descenso en {station['name']}", "Metro Línea A",
+                platform, road_nodes[road_node], "walk", "a pie", access_metrics, connector_geometry[::-1],
+                f"Caminata desde {station['name']}", f"Salida de {station['name']}", "acceso a estación",
             )
 
-        for index, (first, second) in enumerate(zip(connected_stations, connected_stations[1:])):
-            first_station, first_xy = first[0], first[1]
-            second_station, second_xy = second[0], second[1]
-            distance_m = haversine_m(first_xy, second_xy)
-            ride = EdgeMetrics(
-                distance_m, env.metro_speed_kmh, distance_m / (env.metro_speed_kmh / 3.6),
-                0.0, 0.0, "trazo esquemático; velocidad supuesta",
-            )
-            for source, target, a, b in (
-                (("train", index), ("train", index + 1), first_station, second_station),
-                (("train", index + 1), ("train", index), second_station, first_station),
-            ):
-                description = f"Línea A: {a['name']} → {b['name']}"
-                add_transition(
-                    source, target, "ride", "metro", ride, [(a["lat"], a["lon"]), (b["lat"], b["lon"])],
-                    description, description, "Metro Línea A",
+        for route_id, route in TRANSIT_ROUTES.items():
+            ordered = [
+                (station, platforms[(station["line"], station["name"])])
+                for station in transit_route_stations(stations, route_id)
+                if (station["line"], station["name"]) in platforms
+            ]
+            onboard_nodes = [("train", route_id, index) for index in range(len(ordered))]
+            for index, (station, platform) in enumerate(ordered):
+                onboard = onboard_nodes[index]
+                coords[onboard] = (station["lat"], station["lon"])
+                adjacency[onboard] = []
+                board = EdgeMetrics(
+                    0.0, 0.0, env.metro_boarding_min * 60, env.metro_fare_cop, 0.0,
+                    "tarifa frecuente 2026 y espera de abordaje supuesta",
                 )
+                add_transition(
+                    platform, onboard, "board", "metro", board, [],
+                    f"Abordaje en {station['name']}", f"Abordaje en {station['name']}", route["label"],
+                )
+                alight = EdgeMetrics(0.0, 0.0, 0.0, 0.0, 0.0, "descenso del tren")
+                add_transition(
+                    onboard, platform, "alight", "metro", alight, [],
+                    f"Descenso en {station['name']}", f"Descenso en {station['name']}", route["label"],
+                )
+
+            for index, ((first, _), (second, _)) in enumerate(zip(ordered, ordered[1:])):
+                first_xy = (first["lat"], first["lon"])
+                second_xy = (second["lat"], second["lon"])
+                distance_m = haversine_m(first_xy, second_xy)
+                ride = EdgeMetrics(
+                    distance_m, env.metro_speed_kmh, distance_m / (env.metro_speed_kmh / 3.6),
+                    0.0, 0.0, "trazo esquemático; velocidad supuesta",
+                )
+                for source, target, a, b in (
+                    (onboard_nodes[index], onboard_nodes[index + 1], first, second),
+                    (onboard_nodes[index + 1], onboard_nodes[index], second, first),
+                ):
+                    description = f"{route['label']}: {a['name']} → {b['name']}"
+                    add_transition(
+                        source, target, "ride", "metro", ride, [(a["lat"], a["lon"]), (b["lat"], b["lon"])],
+                        description, description, route["label"],
+                    )
 
         algo = algo.clamp()
         heuristic = make_heuristic(
@@ -311,7 +325,7 @@ class Planner:
             raise ValueError(f"Algoritmo desconocido: {algo.algorithm}")
         plan.expanded, plan.runtime_ms = result.expanded, result.runtime_ms
         if not result.found:
-            plan.message = "No se encontró una ruta peatonal ni una combinación con la Línea A."
+            plan.message = "No se encontró una ruta peatonal ni una combinación con el Metro o el Tranvía."
             return plan
 
         plan.found = True
@@ -364,12 +378,12 @@ class Planner:
         rode_metro = any(leg["mode"] == "metro" for leg in plan.legs)
         if rode_metro:
             plan.message = (
-                "Ruta multimodal calculada con A*: caminar y abordar la Línea A son opciones. "
-                "Velocidad, espera y trazo del Metro son estimados."
+                "Ruta multimodal calculada con A*: caminar y abordar las líneas A/B o el Tranvía T son opciones. "
+                "Velocidad, espera y trazos son estimados; no se modelan horarios ni integración tarifaria."
             )
         else:
             plan.message = (
-                "A* encontró que caminar es la opción de menor costo; no es necesario abordar el Metro."
+                "A* encontró que caminar es la opción de menor costo; no es necesario abordar el Metro o el Tranvía."
             )
         return plan
 

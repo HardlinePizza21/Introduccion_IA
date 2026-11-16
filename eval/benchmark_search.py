@@ -81,7 +81,7 @@ def main():
     ratio = pd.DataFrame(ratio)
     md = ["# Benchmark A* vs. Dijkstra vs. BFS", "",
           f"Pares aleatorios por escenario: {args.pairs} (semilla {args.seed}, distancia recta >= 1 km). "
-          "Red: OpenStreetMap, área Centro–Laureles–El Poblado.", "",
+          "Red: OpenStreetMap, corredor de las líneas A/B del Metro y T del Tranvía.", "",
           summ.to_markdown(index=False), "", ratio.to_markdown(index=False)]
     (out / "benchmark_summary.md").write_text("\n".join(md), encoding="utf-8")
     print("\n".join(md))
