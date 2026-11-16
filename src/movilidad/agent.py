@@ -3,7 +3,7 @@
 Variables de entorno (o archivo .env):
   LLM_API_KEY   clave del proveedor (Groq, NVIDIA NIM...). Ollama no la requiere.
   LLM_BASE_URL  por defecto https://api.groq.com/openai/v1
-  LLM_MODEL     por defecto llama-3.3-70b-versatile
+  LLM_MODEL     por defecto openai/gpt-oss-120b
   AGENT_T_MAX   máximo de iteraciones del loop (por defecto 6)
 """
 from __future__ import annotations
@@ -97,7 +97,7 @@ Reglas:
 2. No calcules ni inventes rutas de bus: el sistema no tiene información centralizada de sus recorridos. Puedes consultar
    tarifas de bus en search_docs si preguntan por ellas.
 3. Para normas, tarifas, horarios del Metro, EnCicla o supuestos del modelo usa search_docs y cita cada dato con la cita
-   exacta que devuelve la herramienta, con el formato [archivo.md § sección].
+   exacta que devuelve la herramienta, copiada con corchetes normales: [archivo.md § sección].
 4. Para saber si un vehículo puede circular usa check_pico_y_placa (y cita pico_y_placa_2026_2.md).
 5. Cuando cites cifras de rutas, indica que provienen del cálculo A* sobre OpenStreetMap con velocidades estimadas (no tráfico real).
    En la alternativa Metro, aclara que solo se dibuja esquemáticamente la Línea A disponible en el área y la espera/velocidad son supuestos.
@@ -191,7 +191,7 @@ class MobilityAgent:
                 "archivo .env (vea .env.example). El mapa y la comparación de rutas funcionan sin LLM.")
         from openai import OpenAI
 
-        return OpenAI(api_key=key or "ollama", base_url=base, timeout=60), os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+        return OpenAI(api_key=key or "ollama", base_url=base, timeout=60), os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
 
     def run(self, question: str, history: list | None = None) -> AgentResult:
         client, model = self._client()

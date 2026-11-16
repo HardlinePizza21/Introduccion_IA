@@ -38,7 +38,14 @@ def main():
     for q in spec["preguntas"]:
         t0 = time.time()
         try:
-            res = agent.run(q["pregunta"])
+            for intento in range(4):  # reintenta solo ante límite de uso (429) de la capa gratuita
+                try:
+                    res = agent.run(q["pregunta"])
+                    break
+                except Exception as exc:
+                    if "RateLimit" not in type(exc).__name__ or intento == 3:
+                        raise
+                    time.sleep(30)
             answer, calls, iters = res.answer, [c["name"] for c in res.tool_calls], res.iterations
             errors = sum("error" in c["result"] for c in res.tool_calls if isinstance(c["result"], dict))
         except LLMConfigError as exc:
